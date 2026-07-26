@@ -1,0 +1,18 @@
+{
+    "Amazon": {
+        "AssetProcessor": {
+            "Settings": {
+                "ScanFolder DualSense/Assets": {
+                    "watch": "@GEMROOT:DualSense@/Assets",
+                    "recursive": 1,
+                    "order": 101
+                },
+                "ScanFolder DualSense/Registry": {
+                    "watch": "@GEMROOT:DualSense@/Registry",
+                    "recursive": 1,
+                    "order": 102
+                }
+            }
+        }
+    }
+}
