@@ -7,4 +7,6 @@
 set(FILES
     DualSenseMacGamepadImplFactory.h
     DualSenseSystemImpl_Mac.mm
+    InputDeviceGamepadDualSenseMac.h
+    InputDeviceGamepadDualSenseMac.mm
 )

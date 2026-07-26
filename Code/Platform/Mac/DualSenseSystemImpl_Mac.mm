@@ -1,7 +1,6 @@
 #include <Clients/DualSenseSystemImpl.h>
 #include <Clients/DualSenseSystemComponent.h>
 #include <Clients/DualSenseSlotTracker.h>
-#include <Clients/DualSenseDebugGamepadImpl.h>
 #include "DualSenseMacGamepadImplFactory.h"
 
 #include <AzCore/Console/ILogger.h>
@@ -99,13 +98,5 @@ namespace DualSense
     AZStd::unique_ptr<DualSenseSystemImpl> DualSenseSystemImpl::Create(DualSenseSystemComponent& owner)
     {
         return AZStd::make_unique<DualSenseSystemImplMac>(owner);
-    }
-
-    // TEMPORARY until Task 8 (Mac input path) provides the real implementation:
-    // fall back to the debug implementation so swap wiring can be exercised.
-    AZStd::unique_ptr<AzFramework::InputDeviceGamepad::Implementation> DualSenseMacGamepadImplFactory::Create(
-        AzFramework::InputDeviceGamepad& inputDevice)
-    {
-        return AZStd::make_unique<DualSenseDebugGamepadImpl>(inputDevice);
     }
 } // namespace DualSense
