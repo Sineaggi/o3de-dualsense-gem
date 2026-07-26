@@ -53,13 +53,15 @@ With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
 
 ## Phase 2 — adaptive triggers
 
+**2026-07-26: full matrix PASS on hardware (USB, real DualSense) — all modes felt correct incl. slope/multi-position (macOS >= 12.3 confirmed); unplug-with-active-effect clean; BT still deferred.**
+
 With a DualSense connected via the testbed Editor (USB; BT deferred).
 
-- [ ] `dualsense_trigger r2 weapon` -> R2 has a distinct resistance zone with a "break" like a gun trigger
-- [ ] `dualsense_trigger r2 feedback` -> constant resistance from ~30% pull
-- [ ] `dualsense_trigger both vibration` -> both triggers buzz when pulled past ~20%
-- [ ] `dualsense_trigger r2 slope` -> resistance ramps up across the pull (macOS 12.3+)
-- [ ] `dualsense_trigger r2 multifeedback` -> stepped resistance zones (macOS 12.3+)
-- [ ] `dualsense_trigger_clear` -> both triggers neutral again
-- [ ] Unplug with an active trigger effect -> no crash, clean restore
-- [ ] Reconnect -> triggers neutral (no stale effect)
+- [x] `dualsense_trigger r2 weapon` -> R2 has a distinct resistance zone with a "break" like a gun trigger
+- [x] `dualsense_trigger r2 feedback` -> constant resistance from ~30% pull
+- [x] `dualsense_trigger both vibration` -> both triggers buzz when pulled past ~20%
+- [x] `dualsense_trigger r2 slope` -> resistance ramps up across the pull (macOS 12.3+)
+- [x] `dualsense_trigger r2 multifeedback` -> stepped resistance zones (macOS 12.3+)
+- [x] `dualsense_trigger_clear` -> both triggers neutral again
+- [x] Unplug with an active trigger effect -> no crash, clean restore
+- [x] Reconnect -> triggers neutral (no stale effect)
