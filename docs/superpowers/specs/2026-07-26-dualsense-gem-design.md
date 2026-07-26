@@ -135,11 +135,11 @@ struct TriggerEffect            // serialize- and behavior-reflected
     float m_endPosition;
     float m_strength;           // or amplitude for vibration modes
     float m_endStrength;        // slope mode
-    float m_frequencyHz;        // vibration modes
+    float m_frequency;          // vibration modes only; normalized [0,1] (Apple API is normalized; HID compiler maps to raw byte)
     AZStd::array<float, 10> m_positionalValues; // multi-position modes
 };
 
-enum class Trigger { L2, R2 };
+enum class Trigger { L2, R2, Both };
 virtual void SetTriggerEffect(Trigger trigger, const TriggerEffect&) = 0;
 virtual void ClearTriggerEffects() = 0;
 ```

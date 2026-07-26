@@ -4,6 +4,7 @@
 #include "DualSenseDebugGamepadImpl.h"
 
 #include <DualSense/DualSenseTypeIds.h>
+#include <DualSense/DualSenseTriggerEffects.h>
 
 #include <AzCore/Console/IConsole.h>
 #include <AzCore/Console/ILogger.h>
@@ -27,6 +28,8 @@ namespace DualSense
                 ->Version(0)
                 ;
         }
+
+        TriggerEffect::Reflect(context);
     }
 
     void DualSenseSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
