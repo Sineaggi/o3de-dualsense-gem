@@ -8,6 +8,7 @@
 #include <AzCore/EBus/EBus.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Input/Devices/InputDeviceId.h>
+#include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 
 namespace DualSense
 {
@@ -179,6 +180,27 @@ namespace DualSense
                     &DualSenseTriggerEffectRequestBus::Events::SetTriggerEffect,
                     { setTriggerEffectTriggerParam, setTriggerEffectEffectParam })
                 ->Event("ClearTriggerEffects", &DualSenseTriggerEffectRequestBus::Events::ClearTriggerEffects)
+                ;
+
+            // Script-safe way to obtain the InputDeviceId to address DualSenseTriggerEffectRequestBus
+            // at a given gamepad slot. Constructing InputDeviceId directly from Lua
+            // (`InputDeviceId(InputDeviceGamepad.name, slotIndex)`) does NOT work: InputDeviceId is
+            // reflected with two Constructor<>() overloads but is also default-constructible, and
+            // AZ::ScriptContext's Lua binding only supports overload-free constructor dispatch (see
+            // Code/Framework/AzCore/AzCore/Script/ScriptContext.cpp:5096-5137 in the engine) --
+            // AzFramework::InputDeviceId::Reflect() never registers a
+            // Script::Attributes::ConstructorOverride to fix that, so Lua construction silently
+            // invokes the default constructor and discards both arguments, producing a garbage id.
+            // This helper sidesteps that engine gap entirely by doing the construction in C++ and
+            // handing Lua a ready-made, correctly-identified InputDeviceId. This is the documented
+            // (README) way to get a deviceId for DualSenseTriggerEffectRequestBus from script.
+            behaviorContext->Method(
+                "DualSense_GetGamepadDeviceId",
+                [](AZ::u32 slotIndex) { return AzFramework::InputDeviceGamepad::IdForIndexN(slotIndex); },
+                {{ { "SlotIndex", "Gamepad slot (0-3)" } }})
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense")
+                ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)
                 ;
         }
     }

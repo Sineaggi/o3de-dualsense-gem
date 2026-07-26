@@ -44,6 +44,7 @@ Adaptive trigger effects are scriptable via the `DualSenseTriggerEffectRequestBu
 - Trigger enum: `DualSenseTrigger_L2`, `DualSenseTrigger_R2`, `DualSenseTrigger_Both`
 - Effect mode enum: `DualSenseTriggerEffectMode_Off`, `DualSenseTriggerEffectMode_Feedback`, `DualSenseTriggerEffectMode_Weapon`, `DualSenseTriggerEffectMode_Vibration`, `DualSenseTriggerEffectMode_MultiPositionFeedback`, `DualSenseTriggerEffectMode_MultiPositionVibration`, `DualSenseTriggerEffectMode_SlopeFeedback`
 - Bus: `DualSenseTriggerEffectRequestBus` with methods `SetTriggerEffect(Trigger, DualSenseTriggerEffect)` and `ClearTriggerEffects()`
+- Helper: `DualSense_GetGamepadDeviceId(slotIndex)` — returns the `InputDeviceId` for a gamepad slot (0-3), for use as the bus address below. Use this instead of constructing `InputDeviceId` directly in Lua: doing so currently returns a default-constructed (i.e. wrong) id, because `AzFramework::InputDeviceId::Reflect()` is missing a `ConstructorOverride` that Lua's binding needs to dispatch to the real 2-argument constructor (an upstream engine reflection gap, not specific to this gem).
 
 **Lua example:**
 ```lua
@@ -52,6 +53,6 @@ local effect = DualSenseTriggerEffect()
 effect.mode = DualSenseTriggerEffectMode_Weapon
 effect.startPosition = 0.2
 effect.strength = 0.9
-local deviceId = InputDeviceId(InputDeviceGamepad.name, 0)
+local deviceId = DualSense_GetGamepadDeviceId(0)
 DualSenseTriggerEffectRequestBus.Event.SetTriggerEffect(deviceId, DualSenseTrigger_L2, effect)
 ```
