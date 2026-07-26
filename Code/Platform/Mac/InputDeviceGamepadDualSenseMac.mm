@@ -12,6 +12,30 @@
 
 namespace DualSense
 {
+    namespace
+    {
+        // Maps the raw GameController.framework status enum to the gem-side, ObjC-free
+        // WeaponTriggerStatus (Code/Source/Clients/DualSenseTriggerFireDetector.h). Only the
+        // three Weapon-mode statuses map to a known WeaponTriggerStatus; every other status
+        // (Off/Feedback/Vibration/SlopeFeedback statuses, and GCDualSenseAdaptiveTriggerStatusUnknown
+        // itself) maps to Unknown, since IsWeaponFireEdge only cares about the Weapon-mode
+        // ready/firing/fired progression.
+        WeaponTriggerStatus MapWeaponTriggerStatus(GCDualSenseAdaptiveTriggerStatus status) API_AVAILABLE(macos(11.3))
+        {
+            switch (status)
+            {
+            case GCDualSenseAdaptiveTriggerStatusWeaponReady:
+                return WeaponTriggerStatus::Ready;
+            case GCDualSenseAdaptiveTriggerStatusWeaponFiring:
+                return WeaponTriggerStatus::Firing;
+            case GCDualSenseAdaptiveTriggerStatusWeaponFired:
+                return WeaponTriggerStatus::Fired;
+            default:
+                return WeaponTriggerStatus::Unknown;
+            }
+        }
+    } // namespace
+
     InputDeviceGamepadDualSenseMac::InputDeviceGamepadDualSenseMac(
         AzFramework::InputDeviceGamepad& inputDevice, void* gcController)
         : AzFramework::InputDeviceGamepad::Implementation(inputDevice)
@@ -44,6 +68,8 @@ namespace DualSense
 
         DualSenseTriggerEffectRequestBus::Handler::BusConnect(
             AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()));
+        DualSenseHapticPulseRequestBus::Handler::BusConnect(
+            AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()));
     }
 
     InputDeviceGamepadDualSenseMac::~InputDeviceGamepadDualSenseMac()
@@ -56,6 +82,7 @@ namespace DualSense
         // that has already gone away (dead-controller hardening, same rationale as
         // DualSenseHapticsMac).
         ClearTriggerEffects();
+        DualSenseHapticPulseRequestBus::Handler::BusDisconnect();
         DualSenseTriggerEffectRequestBus::Handler::BusDisconnect();
 
         if (m_wasConnected)
@@ -145,6 +172,16 @@ namespace DualSense
                 m_rawGamepadState.m_thumbStickLeftYState  = pad.leftThumbstick.yAxis.value;
                 m_rawGamepadState.m_thumbStickRightXState = pad.rightThumbstick.xAxis.value;
                 m_rawGamepadState.m_thumbStickRightYState = pad.rightThumbstick.yAxis.value;
+
+                // Weapon-mode fire-edge detection (Phase 2.5, Task 2). pad.leftTrigger/
+                // pad.rightTrigger are declared by the SDK as GCDualSenseAdaptiveTrigger*
+                // (GCDualSenseGamepad.h, see the downcast comment in SetTriggerEffect below),
+                // not the base GCControllerButtonInput* of GCExtendedGamepad, so no further
+                // cast is needed before handing them to ProcessWeaponFireEdge.
+                ProcessWeaponFireEdge(
+                    (__bridge void*)pad.leftTrigger, Trigger::L2, m_leftPrevWeaponStatus, m_leftAutoRecoil);
+                ProcessWeaponFireEdge(
+                    (__bridge void*)pad.rightTrigger, Trigger::R2, m_rightPrevWeaponStatus, m_rightAutoRecoil);
             }
             else
             {
@@ -160,6 +197,12 @@ namespace DualSense
                 m_rawGamepadState.m_thumbStickLeftYState = 0.0f;
                 m_rawGamepadState.m_thumbStickRightXState = 0.0f;
                 m_rawGamepadState.m_thumbStickRightYState = 0.0f;
+
+                // The pad is gone, so its Weapon-mode status can no longer be observed --
+                // reset previous-state so a reconnect starts clean (see the member comment in
+                // the header) instead of comparing fresh reads against stale state.
+                m_leftPrevWeaponStatus = WeaponTriggerStatus::Unknown;
+                m_rightPrevWeaponStatus = WeaponTriggerStatus::Unknown;
             }
         }
         else
@@ -173,6 +216,8 @@ namespace DualSense
             m_rawGamepadState.m_thumbStickLeftYState = 0.0f;
             m_rawGamepadState.m_thumbStickRightXState = 0.0f;
             m_rawGamepadState.m_thumbStickRightYState = 0.0f;
+            m_leftPrevWeaponStatus = WeaponTriggerStatus::Unknown;
+            m_rightPrevWeaponStatus = WeaponTriggerStatus::Unknown;
         }
         ProcessRawGamepadState(m_rawGamepadState);
     }
@@ -251,6 +296,93 @@ namespace DualSense
     void InputDeviceGamepadDualSenseMac::ClearTriggerEffects()
     {
         SetTriggerEffect(Trigger::Both, TriggerEffect{});
+    }
+
+    void InputDeviceGamepadDualSenseMac::PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness)
+    {
+        if (m_haptics)
+        {
+            m_haptics->PlayTransientPulse(leftIntensity, rightIntensity, sharpness);
+        }
+    }
+
+    void InputDeviceGamepadDualSenseMac::SetAutoRecoil(Trigger trigger, bool enabled, float intensity, float sharpness)
+    {
+        // Plain config storage; ProcessWeaponFireEdge below (Phase 2.5, Task 2) is what
+        // consumes it to fire PlayTransientPulse automatically on a Weapon-mode fire edge. No
+        // hardware calls here, so there is nothing to guard/teardown.
+        const AutoRecoilConfig config{ enabled, intensity, sharpness };
+        if (trigger == Trigger::L2 || trigger == Trigger::Both)
+        {
+            m_leftAutoRecoil = config;
+        }
+        if (trigger == Trigger::R2 || trigger == Trigger::Both)
+        {
+            m_rightAutoRecoil = config;
+        }
+    }
+
+    void InputDeviceGamepadDualSenseMac::ProcessWeaponFireEdge(
+        void* gcAdaptiveTrigger, Trigger trigger, WeaponTriggerStatus& prevStatus, const AutoRecoilConfig& config)
+    {
+        if (@available(macOS 11.3, *))
+        {
+            WeaponTriggerStatus current = WeaponTriggerStatus::Unknown;
+            if (gcAdaptiveTrigger)
+            {
+                // See the downcast comment in SetTriggerEffect above: the caller only ever
+                // passes pad.leftTrigger/pad.rightTrigger from a GCDualSenseGamepad-gated pad,
+                // so this __bridge cast back from the opaque void* to the concrete
+                // GCDualSenseAdaptiveTrigger* is safe.
+                GCDualSenseAdaptiveTrigger* adaptiveTrigger = (__bridge GCDualSenseAdaptiveTrigger*)gcAdaptiveTrigger;
+                @try
+                {
+                    current = MapWeaponTriggerStatus(adaptiveTrigger.status);
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: adaptive trigger status read threw on a dead controller, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                    current = WeaponTriggerStatus::Unknown;
+                }
+            }
+
+            const bool fireEdge = IsWeaponFireEdge(prevStatus, current);
+            prevStatus = current;
+
+            if (fireEdge)
+            {
+                // `config` is a reference to m_leftAutoRecoil/m_rightAutoRecoil (see the call
+                // sites in TickInputDevice). This read happens before the notification below
+                // is dispatched, so it always sees the config that was live when the edge was
+                // detected -- there is no same-edge TOCTOU window here. If a handler's
+                // OnWeaponTriggerFired below calls back into SetAutoRecoil for this same
+                // trigger, that change is deferred to the *next* fire edge, not applied
+                // retroactively to this one.
+                //
+                // Firing the auto-recoil pulse first (before the notification) is also what
+                // makes the override in PlayHapticPulse's rolling slot work as documented in
+                // the README: a handler that calls PlayHapticPulse from its own
+                // OnWeaponTriggerFired runs after this pulse has already been issued, so the
+                // handler's pulse is the one that lands in the slot and reaches hardware.
+                if (config.m_enabled && m_haptics)
+                {
+                    // Bias the transient pulse to the side of the trigger that fired: the
+                    // firing side gets the configured intensity, the other side gets 0 (which
+                    // PlayTransientPulse/PlayTransientOnSide already treat as "skip this side").
+                    const bool isLeft = (trigger == Trigger::L2);
+                    m_haptics->PlayTransientPulse(
+                        isLeft ? config.m_intensity : 0.0f,
+                        isLeft ? 0.0f : config.m_intensity,
+                        config.m_sharpness);
+                }
+
+                DualSenseTriggerNotificationBus::Event(
+                    AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()),
+                    &DualSenseTriggerNotifications::OnWeaponTriggerFired,
+                    trigger);
+            }
+        }
     }
 
     void InputDeviceGamepadDualSenseMac::ApplyEffectToTrigger(void* gcAdaptiveTrigger, const TriggerEffect& clamped)

@@ -162,6 +162,114 @@ namespace DualSense
             CFRetain(opaquePlayer);
             *playerSlot = opaquePlayer;
         }
+
+        // One-shot counterpart to UpdateSide: replaces *playerSlot with a new transient
+        // (single "kick", non-looping) player built from `intensity` + `sharpness`, or
+        // clears it when intensity is ~0. Mirrors UpdateSide's rolling-slot MRC idiom and
+        // dead-engine hardening exactly, but builds a CHHapticEventTypeHapticTransient event
+        // (with Intensity + Sharpness parameters) instead of UpdateSide's
+        // CHHapticEventTypeHapticContinuous (infinite rumble) event.
+        void PlayTransientOnSide(void* engineOpaque, void** playerSlot, float intensity, float sharpness) API_AVAILABLE(macos(11.3))
+        {
+            if (!engineOpaque)
+            {
+                return;
+            }
+            CHHapticEngine* engine = (__bridge CHHapticEngine*)engineOpaque;
+
+            if (*playerSlot)
+            {
+                id<CHHapticPatternPlayer> old = (__bridge id<CHHapticPatternPlayer>)*playerSlot;
+                @try
+                {
+                    // Same dead-engine hardening as UpdateSide: a controller that has gone
+                    // away can make stopAtTime:error: throw an NSException instead of only
+                    // returning an NSError.
+                    [old stopAtTime:0 error:nil];
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: transient stopAtTime: threw on a dead haptic engine, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                }
+                // `old` is a __bridge (non-owning) reference into *playerSlot; the CFRelease
+                // below is the only owning release for this player and must run whether or not
+                // stop threw, so it sits after the @try/@catch, unconditional.
+                CFRelease(*playerSlot); // balances the CFRetain taken when this player was stored
+                *playerSlot = nullptr;
+            }
+            if (intensity <= 0.001f)
+            {
+                return;
+            }
+
+            NSError* error = nil;
+            CHHapticEventParameter* intensityParam =
+                [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity
+                                                              value:intensity];
+            CHHapticEventParameter* sharpnessParam =
+                [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness
+                                                              value:sharpness];
+            CHHapticEvent* event =
+                [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticTransient
+                                              parameters:@[ intensityParam, sharpnessParam ]
+                                            relativeTime:0];
+            // `event` retains what it needs from the parameters internally (per the
+            // CHHapticEvent contract); our +1s from alloc/init are no longer needed.
+            [intensityParam release];
+            [sharpnessParam release];
+
+            CHHapticPattern* pattern = [[CHHapticPattern alloc] initWithEvents:@[ event ]
+                                                               parameterCurves:@[]
+                                                                         error:&error];
+            // Likewise, `pattern` does not retain the array we pass it, only what it
+            // needs from the elements, so our +1 on `event` is no longer needed.
+            [event release];
+            if (!pattern)
+            {
+                AZLOG_WARN("DualSense: transient haptic pattern creation failed: %s",
+                           error.localizedDescription.UTF8String);
+                return;
+            }
+            id<CHHapticPatternPlayer> player = nil;
+            BOOL playerStarted = NO;
+            @try
+            {
+                // Same autoreleased-return reasoning as UpdateSide: `player` is not an
+                // owned reference here, so a throw before or after it's assigned leaves
+                // nothing extra to release; on catch this is simply a failed start, and the
+                // player is never stored.
+                player = [engine createPlayerWithPattern:pattern error:&error];
+                if (player)
+                {
+                    playerStarted = [player startAtTime:0 error:&error];
+                }
+            }
+            @catch (NSException* exception)
+            {
+                AZLOG_DEBUG("DualSense: transient haptic player create/start threw on a dead engine, ignoring: %s",
+                            exception.reason ? exception.reason.UTF8String : "unknown");
+                player = nil;
+                playerStarted = NO;
+            }
+            // `pattern` is only referenced inside the @try body (createPlayerWithPattern: does
+            // not retain it beyond the call); release our +1 unconditionally now that the call
+            // has either returned normally or been caught, so it happens on every path exactly
+            // once.
+            [pattern release];
+            if (!player || !playerStarted)
+            {
+                AZLOG_WARN("DualSense: transient haptic player start failed: %s",
+                           error ? error.localizedDescription.UTF8String : "unknown");
+                return;
+            }
+
+            // `player` is autoreleased (createPlayerWithPattern:error: does not return an
+            // owned reference). Take ownership for the lifetime of the opaque pointer.
+            void* opaquePlayer = (__bridge void*)player;
+            CFRetain(opaquePlayer);
+            *playerSlot = opaquePlayer;
+        }
     } // namespace
 
     DualSenseHapticsMac::DualSenseHapticsMac(void* gcController)
@@ -239,5 +347,23 @@ namespace DualSense
     void DualSenseHapticsMac::Stop()
     {
         SetVibration(0.0f, 0.0f);
+        if (@available(macOS 11.3, *))
+        {
+            // Also release any in-flight transient (pulse) players, same as SetVibration(0,0)
+            // does for the continuous rumble players above -- both player slot pairs must be
+            // torn down before the destructor releases the engines below.
+            PlayTransientOnSide(m_leftEngine, &m_leftTransientPlayer, 0.0f, 0.0f);
+            PlayTransientOnSide(m_rightEngine, &m_rightTransientPlayer, 0.0f, 0.0f);
+        }
+    }
+
+    void DualSenseHapticsMac::PlayTransientPulse(float leftIntensity, float rightIntensity, float sharpness)
+    {
+        if (@available(macOS 11.3, *))
+        {
+            const float clampedSharpness = AZ::GetClamp(sharpness, 0.0f, 1.0f);
+            PlayTransientOnSide(m_leftEngine, &m_leftTransientPlayer, AZ::GetClamp(leftIntensity, 0.0f, 1.0f), clampedSharpness);
+            PlayTransientOnSide(m_rightEngine, &m_rightTransientPlayer, AZ::GetClamp(rightIntensity, 0.0f, 1.0f), clampedSharpness);
+        }
     }
 } // namespace DualSense

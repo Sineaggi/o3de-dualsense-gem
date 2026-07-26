@@ -6,6 +6,7 @@
 #include <AzFramework/Input/Devices/InputDeviceId.h>
 #include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 #include <DualSense/DualSenseTriggerEffects.h>
+#include <DualSense/DualSenseHaptics.h>
 
 namespace DualSenseTests
 {
@@ -18,6 +19,24 @@ namespace DualSenseTests
 
         EXPECT_NE(bc.m_classes.find("DualSenseTriggerEffect"), bc.m_classes.end());
         EXPECT_NE(bc.m_ebuses.find("DualSenseTriggerEffectRequestBus"), bc.m_ebuses.end());
+    }
+
+    TEST_F(ScriptReflectionFixture, BehaviorContext_RegistersHapticPulseBus)
+    {
+        AZ::BehaviorContext bc;
+        DualSense::ReflectDualSenseHapticPulseBus(&bc);
+
+        EXPECT_NE(bc.m_ebuses.find("DualSenseHapticPulseRequestBus"), bc.m_ebuses.end());
+    }
+
+    // Phase 2.5, Task 2: DualSenseTriggerNotificationBus (weapon-fire notifications) is
+    // reflected via its own free function, mirroring ReflectDualSenseHapticPulseBus above.
+    TEST_F(ScriptReflectionFixture, BehaviorContext_RegistersTriggerNotificationBus)
+    {
+        AZ::BehaviorContext bc;
+        DualSense::ReflectDualSenseTriggerNotificationBus(&bc);
+
+        EXPECT_NE(bc.m_ebuses.find("DualSenseTriggerNotificationBus"), bc.m_ebuses.end());
     }
 
     namespace
@@ -252,6 +271,105 @@ namespace DualSenseTests
             << "Engine gap appears fixed: InputDeviceId('gamepad', 0) now matches IdForIndex0. "
                "Simplify README.md/this test to construct InputDeviceId directly and drop "
                "DualSense_GetGamepadDeviceId.";
+    }
+
+    namespace
+    {
+        // Records whatever DualSenseHapticPulseRequestBus is called with, so the test below can
+        // drive a dispatch entirely from Lua and assert on the C++ side what actually arrived.
+        // Mirrors TestTriggerEffectHandler above.
+        class TestHapticPulseHandler : public DualSense::DualSenseHapticPulseRequestBus::Handler
+        {
+        public:
+            explicit TestHapticPulseHandler(const AzFramework::InputDeviceId& id)
+            {
+                DualSense::DualSenseHapticPulseRequestBus::Handler::BusConnect(id);
+            }
+
+            ~TestHapticPulseHandler() override
+            {
+                DualSense::DualSenseHapticPulseRequestBus::Handler::BusDisconnect();
+            }
+
+            void PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness) override
+            {
+                m_lastLeftIntensity = leftIntensity;
+                m_lastRightIntensity = rightIntensity;
+                m_lastSharpness = sharpness;
+                ++m_pulseCallCount;
+            }
+
+            void SetAutoRecoil(DualSense::Trigger trigger, bool enabled, float intensity, float sharpness) override
+            {
+                m_lastRecoilTrigger = trigger;
+                m_lastRecoilEnabled = enabled;
+                m_lastRecoilIntensity = intensity;
+                m_lastRecoilSharpness = sharpness;
+                ++m_recoilCallCount;
+            }
+
+            float m_lastLeftIntensity = 0.0f;
+            float m_lastRightIntensity = 0.0f;
+            float m_lastSharpness = 0.0f;
+            int m_pulseCallCount = 0;
+
+            DualSense::Trigger m_lastRecoilTrigger = DualSense::Trigger::L2;
+            bool m_lastRecoilEnabled = false;
+            float m_lastRecoilIntensity = 0.0f;
+            float m_lastRecoilSharpness = 0.0f;
+            int m_recoilCallCount = 0;
+        };
+    } // namespace
+
+    // Same dispatch shape as Lua_ReadmeExampleShapeDispatchesThroughRequestBusWithEnumModeAssignment
+    // above, but for the new DualSenseHapticPulseRequestBus (Phase 2.5, Task 1): drives
+    // PlayHapticPulse entirely from Lua via the same DualSense_GetGamepadDeviceId helper, and
+    // asserts the fixture handler received exactly the values passed from script.
+    TEST_F(ScriptRoundTripFixture, Lua_HapticPulseDispatchesThroughRequestBus)
+    {
+        AzFramework::InputDeviceId::Reflect(m_behaviorContext);
+        DualSense::TriggerEffect::Reflect(m_behaviorContext); // also reflects DualSense_GetGamepadDeviceId
+        DualSense::ReflectDualSenseHapticPulseBus(m_behaviorContext);
+
+        TestHapticPulseHandler handler(AzFramework::InputDeviceGamepad::IdForIndex0);
+
+        AZ::ScriptContext sc;
+        sc.BindTo(m_behaviorContext);
+
+        EXPECT_TRUE(sc.Execute("deviceId = DualSense_GetGamepadDeviceId(0)"));
+        EXPECT_TRUE(sc.Execute("DualSenseHapticPulseRequestBus.Event.PlayHapticPulse(deviceId, 0.9, 0.2, 0.7)"));
+
+        ASSERT_EQ(handler.m_pulseCallCount, 1);
+        EXPECT_FLOAT_EQ(handler.m_lastLeftIntensity, 0.9f);
+        EXPECT_FLOAT_EQ(handler.m_lastRightIntensity, 0.2f);
+        EXPECT_FLOAT_EQ(handler.m_lastSharpness, 0.7f);
+    }
+
+    // Carried-forward test debt from the Task 1 review (SetAutoRecoil had zero coverage): same
+    // dispatch shape as Lua_HapticPulseDispatchesThroughRequestBus above, but drives
+    // SetAutoRecoil from Lua instead of PlayHapticPulse, and asserts the fixture handler
+    // (TestHapticPulseHandler, already wired to record SetAutoRecoil calls) received exactly
+    // what script passed.
+    TEST_F(ScriptRoundTripFixture, Lua_SetAutoRecoilDispatchesThroughRequestBus)
+    {
+        AzFramework::InputDeviceId::Reflect(m_behaviorContext);
+        DualSense::TriggerEffect::Reflect(m_behaviorContext); // also reflects DualSense_GetGamepadDeviceId + Trigger enums
+        DualSense::ReflectDualSenseHapticPulseBus(m_behaviorContext);
+
+        TestHapticPulseHandler handler(AzFramework::InputDeviceGamepad::IdForIndex0);
+
+        AZ::ScriptContext sc;
+        sc.BindTo(m_behaviorContext);
+
+        EXPECT_TRUE(sc.Execute("deviceId = DualSense_GetGamepadDeviceId(0)"));
+        EXPECT_TRUE(sc.Execute(
+            "DualSenseHapticPulseRequestBus.Event.SetAutoRecoil(deviceId, DualSenseTrigger_R2, true, 0.6, 0.3)"));
+
+        ASSERT_EQ(handler.m_recoilCallCount, 1);
+        EXPECT_EQ(handler.m_lastRecoilTrigger, DualSense::Trigger::R2);
+        EXPECT_TRUE(handler.m_lastRecoilEnabled);
+        EXPECT_FLOAT_EQ(handler.m_lastRecoilIntensity, 0.6f);
+        EXPECT_FLOAT_EQ(handler.m_lastRecoilSharpness, 0.3f);
     }
 
 } // namespace DualSenseTests
