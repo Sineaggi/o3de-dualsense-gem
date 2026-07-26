@@ -205,4 +205,31 @@ namespace DualSenseTests
         EXPECT_FLOAT_EQ(degraded.m_frequency, 0.5f);
     }
 
+    // Regression test: out-of-range positionals are clamped before scanning.
+    // MultiPositionFeedback with {-1.0, 0.0, 2.5, 0.4, 0, 0, 0, 0, 0, 0}
+    // After clamping: {0.0, 0.0, 1.0, 0.4, 0, 0, 0, 0, 0, 0}
+    // First index > 0 is 2, max is 1.0 -> Feedback with start 2/9.0, strength 1.0
+    TEST_F(TriggerMappingFixture, DegradeToBaselineApi_MultiPositionFeedbackOutOfRangePositionals)
+    {
+        DualSense::TriggerEffect effect;
+        effect.m_mode = DualSense::TriggerEffectMode::MultiPositionFeedback;
+        effect.m_positionalValues[0] = -1.0f;  // clamps to 0.0
+        effect.m_positionalValues[1] = 0.0f;
+        effect.m_positionalValues[2] = 2.5f;   // clamps to 1.0, first > 0 after clamping
+        effect.m_positionalValues[3] = 0.4f;
+        // rest default to 0
+
+        DualSense::TriggerEffect degraded = DualSense::DegradeToBaselineApi(effect);
+
+        EXPECT_EQ(degraded.m_mode, DualSense::TriggerEffectMode::Feedback);
+        EXPECT_FLOAT_EQ(degraded.m_startPosition, 2.0f / 9.0f);
+        EXPECT_FLOAT_EQ(degraded.m_strength, 1.0f);  // 2.5 clamped to 1.0
+
+        // Verify all output positional values are cleared
+        for (size_t i = 0; i < degraded.m_positionalValues.size(); ++i)
+        {
+            EXPECT_EQ(degraded.m_positionalValues[i], 0.0f) << "Positional value at index " << i << " should be 0";
+        }
+    }
+
 } // namespace DualSenseTests
