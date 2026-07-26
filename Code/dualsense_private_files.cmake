@@ -8,4 +8,6 @@ set(FILES
     Source/Clients/DualSenseGamepadButtonMap.h
     Source/Clients/DualSenseDebugGamepadImpl.cpp
     Source/Clients/DualSenseDebugGamepadImpl.h
+    Source/Clients/DualSenseSlotTracker.h
+    Source/Clients/DualSenseSlotTracker.cpp
 )

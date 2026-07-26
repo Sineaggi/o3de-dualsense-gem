@@ -5,5 +5,6 @@
 #      ../Include/Mac/DualSenseMac.h
 
 set(FILES
-    ../Common/Unimplemented/DualSenseSystemImpl_Unimplemented.cpp
+    DualSenseMacGamepadImplFactory.h
+    DualSenseSystemImpl_Mac.mm
 )
