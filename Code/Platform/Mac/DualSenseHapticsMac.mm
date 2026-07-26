@@ -184,24 +184,36 @@ namespace DualSense
                 if (*engineSlot)
                 {
                     CHHapticEngine* engine = (__bridge CHHapticEngine*)*engineSlot;
+                    // A dead engine (the controller already gone) can throw from
+                    // stopWithCompletionHandler: or from the resetHandler property setter
+                    // instead of failing silently. An exception must NEVER escape a
+                    // destructor -- that is exactly what aborted the Editor in the field (see
+                    // the stopAtTime: crash forensics above) -- so every remaining engine call
+                    // here is guarded. Each call gets its OWN @try/@catch (rather than sharing
+                    // one) so a throw from one can never skip the other's mitigation --
+                    // resetHandler neutralization in particular must still run even when stop
+                    // throws, since a thrown stop is the realistic case this exists for.
                     @try
                     {
-                        // A dead engine (the controller already gone) can throw from
-                        // stopWithCompletionHandler: or from the resetHandler property setter
-                        // instead of failing silently. An exception must NEVER escape a
-                        // destructor -- that is exactly what aborted the Editor in the field
-                        // (see the stopAtTime: crash forensics above) -- so every remaining
-                        // engine call here is guarded.
-                        [engine stopWithCompletionHandler:nil];
                         // resetHandler is declared nonnull by the SDK (NS_ASSUME_NONNULL region
                         // in CHHapticEngine.h), so it can't be set to nil under -Werror -Wnonnull;
                         // a no-op block achieves the same goal (drop the reference to `weakEngine`
-                        // so a post-release reset can never touch a dangling pointer).
+                        // so a post-release reset can never touch a dangling pointer). Done first
+                        // and independently of stopWithCompletionHandler: below.
                         engine.resetHandler = ^{};
                     }
                     @catch (NSException* exception)
                     {
-                        AZLOG_DEBUG("DualSense: haptic engine teardown threw on a dead engine, ignoring: %s",
+                        AZLOG_DEBUG("DualSense: haptic engine resetHandler teardown threw on a dead engine, ignoring: %s",
+                                    exception.reason ? exception.reason.UTF8String : "unknown");
+                    }
+                    @try
+                    {
+                        [engine stopWithCompletionHandler:nil];
+                    }
+                    @catch (NSException* exception)
+                    {
+                        AZLOG_DEBUG("DualSense: haptic engine stopWithCompletionHandler: threw on a dead engine, ignoring: %s",
                                     exception.reason ? exception.reason.UTF8String : "unknown");
                     }
                     // CFRelease must run whether or not the calls above threw: it balances the
