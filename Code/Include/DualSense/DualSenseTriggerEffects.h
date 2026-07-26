@@ -4,9 +4,12 @@
 
 #include <AzCore/RTTI/TypeInfoSimple.h>
 #include <AzCore/RTTI/BehaviorContext.h>
+#include <AzCore/Math/Color.h>
 #include <AzCore/std/containers/array.h>
 #include <AzCore/EBus/EBus.h>
 #include <AzCore/Serialization/SerializeContext.h>
+#include <AzFramework/Input/Buses/Requests/InputHapticFeedbackRequestBus.h>
+#include <AzFramework/Input/Buses/Requests/InputLightBarRequestBus.h>
 #include <AzFramework/Input/Devices/InputDeviceId.h>
 #include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 
@@ -198,6 +201,48 @@ namespace DualSense
                 "DualSense_GetGamepadDeviceId",
                 [](AZ::u32 slotIndex) { return AzFramework::InputDeviceGamepad::IdForIndexN(slotIndex); },
                 {{ { "SlotIndex", "Gamepad slot (0-3)" } }})
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense")
+                ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)
+                ;
+
+            // The engine's own rumble output bus (AzFramework::InputHapticFeedbackRequestBus) is
+            // not behavior-reflected (see spec §2, docs/superpowers/specs/2026-07-26-dualsense-
+            // gem-design.md) -- this bridges it for scripts/test scenes (Phase 2.6 keyboard scene
+            // coexistence checks).
+            behaviorContext->Method(
+                "DualSense_SetRumble",
+                [](AZ::u32 slotIndex, float left, float right)
+                {
+                    AzFramework::InputHapticFeedbackRequestBus::Event(
+                        AzFramework::InputDeviceGamepad::IdForIndexN(slotIndex),
+                        &AzFramework::InputHapticFeedbackRequests::SetVibration,
+                        left,
+                        right);
+                },
+                {{ { "SlotIndex", "Gamepad slot (0-3)" },
+                   { "Left", "Left (large/low frequency) motor speed, normalized [0,1]" },
+                   { "Right", "Right (small/high frequency) motor speed, normalized [0,1]" } }})
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense")
+                ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)
+                ;
+
+            // The engine's own light bar output bus (AzFramework::InputLightBarRequestBus) is not
+            // behavior-reflected (see spec §2) -- this bridges it for scripts/test scenes.
+            behaviorContext->Method(
+                "DualSense_SetLightBar",
+                [](AZ::u32 slotIndex, float r, float g, float b)
+                {
+                    AzFramework::InputLightBarRequestBus::Event(
+                        AzFramework::InputDeviceGamepad::IdForIndexN(slotIndex),
+                        &AzFramework::InputLightBarRequests::SetLightBarColor,
+                        AZ::Color(r, g, b, 1.0f));
+                },
+                {{ { "SlotIndex", "Gamepad slot (0-3)" },
+                   { "R", "Red, normalized [0,1]" },
+                   { "G", "Green, normalized [0,1]" },
+                   { "B", "Blue, normalized [0,1]" } }})
                 ->Attribute(AZ::Script::Attributes::Module, "dualsense")
                 ->Attribute(AZ::Script::Attributes::Category, "DualSense")
                 ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)

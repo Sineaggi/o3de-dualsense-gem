@@ -246,6 +246,22 @@ namespace DualSense
                 effect.m_positionalValues = {{0.0f, 0.5f, 0.0f, 0.5f, 0.0f, 0.5f, 0.0f, 0.5f, 0.0f, 0.5f}};
                 effect.m_frequency = 0.5f;
             }
+            else if (modeStr == "autofire")
+            {
+                // Repeated-firing trigger feel: Vibration mode at a LOW frequency (the "vibration"
+                // preset above is a fine buzz at 0.6, wrong feel for repeated fire). Per
+                // ~/pong/docs/dualsense-porting-guide.md, the hardware-validated reference
+                // implementation's repeated-fire feel is trigger vibration at 25 Hz RAW firmware
+                // units (0-255 range). Apple's GameController API takes a normalized [0,1]
+                // frequency parameter; this gem assumes a linear mapping (Hz / 255), giving
+                // 25 / 255 ~= 0.098. This mapping is UNVERIFIED on hardware -- it is a starting
+                // point, not a validated constant. The phase 2.6 test scene's frequency-sweep
+                // keys ([ / ]) exist specifically to lock the feel empirically.
+                effect.m_mode = TriggerEffectMode::Vibration;
+                effect.m_startPosition = 0.2f;
+                effect.m_strength = 0.9f;
+                effect.m_frequency = 0.098f;
+            }
 
             return effect;
         }
@@ -254,7 +270,7 @@ namespace DualSense
         {
             if (arguments.size() < 2)
             {
-                AZLOG_INFO("Usage: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|slope|multifeedback|multivibration> [slot]");
+                AZLOG_INFO("Usage: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|autofire|slope|multifeedback|multivibration> [slot]");
                 return;
             }
 
@@ -283,7 +299,7 @@ namespace DualSense
             }
             else
             {
-                AZLOG_INFO("Usage: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|slope|multifeedback|multivibration> [slot]");
+                AZLOG_INFO("Usage: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|autofire|slope|multifeedback|multivibration> [slot]");
                 return;
             }
 
@@ -293,7 +309,7 @@ namespace DualSense
             // Check if the mode was valid (only Off has special handling)
             if (effect.m_mode == TriggerEffectMode::Off && modeStr != "off")
             {
-                AZLOG_INFO("Usage: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|slope|multifeedback|multivibration> [slot]");
+                AZLOG_INFO("Usage: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|autofire|slope|multifeedback|multivibration> [slot]");
                 return;
             }
 
@@ -304,7 +320,7 @@ namespace DualSense
                 effect);
         }
         AZ_CONSOLEFREEFUNC(dualsense_trigger, AZ::ConsoleFunctorFlags::DontReplicate,
-            "Set a trigger effect: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|slope|multifeedback|multivibration> [slot]");
+            "Set a trigger effect: dualsense_trigger <l2|r2|both> <off|feedback|weapon|vibration|autofire|slope|multifeedback|multivibration> [slot]");
 
         static void dualsense_trigger_clear(const AZ::ConsoleCommandContainer& arguments)
         {
@@ -319,22 +335,34 @@ namespace DualSense
 
         static void dualsense_fire_demo(const AZ::ConsoleCommandContainer& arguments)
         {
-            if (arguments.size() > 2)
+            if (arguments.size() > 3)
             {
-                AZLOG_INFO("Usage: dualsense_fire_demo [l2|r2|both] [slot]");
+                AZLOG_INFO("Usage: dualsense_fire_demo [auto] [l2|r2|both] [slot]");
                 return;
+            }
+
+            // Optional leading mode word "auto" selects the autofire preset (see below); it does
+            // not consume the trigger/slot argument slots that follow it.
+            size_t argIndex = 0;
+            bool autofire = false;
+            if (argIndex < arguments.size() && AZStd::string(arguments[argIndex]) == "auto")
+            {
+                autofire = true;
+                ++argIndex;
             }
 
             AZStd::string triggerStr = "r2";  // default
             AZ::u32 slot = 0;
 
-            if (!arguments.empty())
+            if (argIndex < arguments.size())
             {
-                triggerStr = AZStd::string(arguments[0]);
+                triggerStr = AZStd::string(arguments[argIndex]);
+                ++argIndex;
             }
-            if (arguments.size() >= 2)
+            if (argIndex < arguments.size())
             {
-                slot = static_cast<AZ::u32>(strtoul(AZStd::string(arguments[1]).c_str(), nullptr, 10));
+                slot = static_cast<AZ::u32>(strtoul(AZStd::string(arguments[argIndex]).c_str(), nullptr, 10));
+                ++argIndex;
             }
 
             // Parse trigger
@@ -353,11 +381,40 @@ namespace DualSense
             }
             else
             {
-                AZLOG_INFO("Usage: dualsense_fire_demo [l2|r2|both] [slot]");
+                AZLOG_INFO("Usage: dualsense_fire_demo [auto] [l2|r2|both] [slot]");
                 return;
             }
 
             const AzFramework::InputDeviceId deviceId = AzFramework::InputDeviceGamepad::IdForIndexN(slot);
+
+            if (autofire)
+            {
+                // Autofire preset: the trigger's own Vibration-mode buzz (see the "autofire" mode
+                // word on dualsense_trigger / CreateTriggerEffectForMode for the frequency-mapping
+                // comment) IS the repeated-fire feel here, so auto-recoil stays OFF -- layering a
+                // discrete per-shot kick on top of a continuous buzz would double up the feel.
+                // This is deliberately distinct from the weapon+kick demo below.
+                const TriggerEffect effect = CreateTriggerEffectForMode("autofire");
+
+                DualSenseTriggerEffectRequestBus::Event(
+                    deviceId,
+                    &DualSenseTriggerEffectRequests::SetTriggerEffect,
+                    trigger,
+                    effect);
+
+                DualSenseHapticPulseRequestBus::Event(
+                    deviceId,
+                    &DualSenseHapticPulseRequests::SetAutoRecoil,
+                    trigger,
+                    false,
+                    0.0f,
+                    0.0f);
+
+                AZLOG_INFO(
+                    "DualSense: autofire demo activated for %s trigger (slot %u) -- pull the trigger!",
+                    triggerStr.c_str(), slot);
+                return;
+            }
 
             // Set weapon trigger effect (same preset as dualsense_trigger)
             TriggerEffect effect;
@@ -384,7 +441,8 @@ namespace DualSense
             AZLOG_INFO("DualSense: fire demo activated for %s trigger (slot %u) -- pull the trigger!", triggerStr.c_str(), slot);
         }
         AZ_CONSOLEFREEFUNC(dualsense_fire_demo, AZ::ConsoleFunctorFlags::DontReplicate,
-            "Activate demo fire feel (weapon effect + auto-recoil): dualsense_fire_demo [l2|r2|both] [slot]");
+            "Activate demo fire feel: dualsense_fire_demo [auto] [l2|r2|both] [slot] "
+            "(default: weapon effect + auto-recoil kick; 'auto': autofire vibration preset, no auto-recoil)");
 
         static void dualsense_fire_demo_off(const AZ::ConsoleCommandContainer& arguments)
         {
