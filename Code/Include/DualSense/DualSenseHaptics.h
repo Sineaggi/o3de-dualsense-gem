@@ -27,6 +27,47 @@ namespace DualSense
 
     using DualSenseHapticPulseRequestBus = AZ::EBus<DualSenseHapticPulseRequests>;
 
+    //! Notification bus, fired on the Weapon-mode trigger-status edge that transitions INTO
+    //! Fired (see IsWeaponFireEdge, Code/Source/Clients/DualSenseTriggerFireDetector.h).
+    //! ById on InputDeviceId like the buses above, but HandlerPolicy::Multiple -- deliberate,
+    //! this is a fan-out notification (any number of gameplay systems may want to react to a
+    //! given gamepad's fire edges), not a single-owner request/response like
+    //! DualSenseTriggerEffectRequestBus/DualSenseHapticPulseRequestBus.
+    class DualSenseTriggerNotifications : public AZ::EBusTraits
+    {
+    public:
+        static const AZ::EBusHandlerPolicy HandlerPolicy = AZ::EBusHandlerPolicy::Multiple;
+        static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ById;
+        using BusIdType = AzFramework::InputDeviceId;
+
+        //! `trigger` is L2 or R2 (never Both -- each physical trigger fires its own edge
+        //! independently).
+        virtual void OnWeaponTriggerFired(Trigger trigger) {}
+        virtual ~DualSenseTriggerNotifications() = default;
+    };
+
+    using DualSenseTriggerNotificationBus = AZ::EBus<DualSenseTriggerNotifications>;
+
+    //! BehaviorContext handler binding for DualSenseTriggerNotificationBus, so Lua/Script
+    //! Canvas can implement OnWeaponTriggerFired. Engine precedent:
+    //! InputDeviceNotificationBusBehaviorHandler in AzFramework's InputDevice.cpp.
+    class DualSenseTriggerNotificationBusBehaviorHandler
+        : public DualSenseTriggerNotificationBus::Handler
+        , public AZ::BehaviorEBusHandler
+    {
+    public:
+        AZ_EBUS_BEHAVIOR_BINDER(DualSenseTriggerNotificationBusBehaviorHandler
+            , "{6351A7A9-6C64-4244-ABBA-84C918C5DE8F}"
+            , AZ::SystemAllocator
+            , OnWeaponTriggerFired
+        );
+
+        void OnWeaponTriggerFired(Trigger trigger) override
+        {
+            Call(FN_OnWeaponTriggerFired, trigger);
+        }
+    };
+
     //! Reflects DualSenseHapticPulseRequestBus to the BehaviorContext (Script Canvas/Lua).
     //! Owned here as a free function (rather than as a static method on a reflected data
     //! struct, cf. TriggerEffect::Reflect) because this bus has no data type of its own --
@@ -66,6 +107,22 @@ namespace DualSense
                     &DualSenseHapticPulseRequestBus::Events::SetAutoRecoil,
                     { setAutoRecoilTriggerParam, setAutoRecoilEnabledParam, setAutoRecoilIntensityParam,
                       setAutoRecoilSharpnessParam })
+                ;
+        }
+    }
+
+    //! Reflects DualSenseTriggerNotificationBus to the BehaviorContext (Script Canvas/Lua),
+    //! including the Handler<> binding so scripts can implement OnWeaponTriggerFired. Called
+    //! from DualSenseSystemComponent::Reflect alongside ReflectDualSenseHapticPulseBus.
+    inline void ReflectDualSenseTriggerNotificationBus(AZ::ReflectContext* context)
+    {
+        if (auto behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context))
+        {
+            behaviorContext->EBus<DualSenseTriggerNotificationBus>("DualSenseTriggerNotificationBus")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense")
+                ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)
+                ->Handler<DualSenseTriggerNotificationBusBehaviorHandler>()
                 ;
         }
     }

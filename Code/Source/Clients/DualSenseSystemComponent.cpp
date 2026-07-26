@@ -32,6 +32,7 @@ namespace DualSense
 
         TriggerEffect::Reflect(context);
         ReflectDualSenseHapticPulseBus(context);
+        ReflectDualSenseTriggerNotificationBus(context);
     }
 
     void DualSenseSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)
