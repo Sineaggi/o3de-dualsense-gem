@@ -15,9 +15,11 @@ design and `docs/superpowers/plans/` for the implementation plan.
 ## Build & test (Mac)
 
     cd ~/Source/o3de
-    cmake --preset mac-ninja -DLY_DISABLE_TEST_MODULES=FALSE
+    cmake --preset mac-ninja -DLY_DISABLE_TEST_MODULES=FALSE -DO3DE_EXTERNAL_SUBDIRS="$HOME/Source/o3de-dualsense-gem"
     cmake --build build/mac_ninja --config profile --target DualSense.Tests -j 10
     ./build/mac_ninja/bin/profile/AzTestRunner $PWD/build/mac_ninja/bin/profile/libDualSense.Tests.dylib AzRunUnitTests
+
+Engine-only builds require `-DO3DE_EXTERNAL_SUBDIRS` because manifest-registered gems are not auto-included; when building with a project that enables the gem (`-DLY_PROJECTS=...`), the flag is still recommended for the test target.
 
 ## Debug console commands
 
