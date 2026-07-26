@@ -357,6 +357,15 @@ namespace DualSense
                     &DualSenseTriggerNotifications::OnWeaponTriggerFired,
                     trigger);
 
+                // `config` is a reference to m_leftAutoRecoil/m_rightAutoRecoil (see the call
+                // sites in TickInputDevice), and AZ::EBus::Event dispatches synchronously to
+                // every handler before returning -- so if a handler's OnWeaponTriggerFired
+                // above calls back into SetAutoRecoil for this same trigger, this read sees the
+                // just-updated config, not the value that was live when the edge was detected.
+                // That is intentional, not an accident: it lets a gameplay handler retune (or
+                // disable) auto-recoil in direct response to its own fire-edge notification and
+                // have that decision apply starting with this same edge's pulse, rather than
+                // being deferred to the next one.
                 if (config.m_enabled && m_haptics)
                 {
                     // Bias the transient pulse to the side of the trigger that fired: the

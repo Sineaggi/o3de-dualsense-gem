@@ -18,11 +18,15 @@ namespace DualSense
         Fired
     };
 
-    //! Pure, unit-testable: true exactly on the transition INTO the fired state (i.e.
-    //! `current == Fired && previous != Fired`). `Unknown` is handled like any other
-    //! non-Fired previous state -- in particular the very first tick after a trigger's
-    //! previous-state member is default-constructed (Unknown) never fires, since Unknown
-    //! itself is never Fired.
+    //! Pure, unit-testable: true exactly on the transition INTO the fired state FROM an
+    //! actually-observed prior Weapon-mode state (i.e. `current == Fired && (previous == Ready
+    //! || previous == Firing)`). `previous == Unknown` is explicitly excluded and NEVER fires,
+    //! even when `current == Fired`: `Unknown` means "no real prior observation" (a trigger's
+    //! previous-state member is default-constructed to Unknown, and is reset back to Unknown on
+    //! every pad-nil/below-OS-floor tick -- not just cold start, but also transient Bluetooth
+    //! reconnect blips). Treating the first observation after such a reset as a baseline rather
+    //! than an edge avoids a phantom notification + phantom auto-recoil kick on the exact frame
+    //! a pad reconnects mid-fire-animation, when the freshly-read status can already be Fired.
     bool IsWeaponFireEdge(WeaponTriggerStatus previous, WeaponTriggerStatus current);
 
 } // namespace DualSense

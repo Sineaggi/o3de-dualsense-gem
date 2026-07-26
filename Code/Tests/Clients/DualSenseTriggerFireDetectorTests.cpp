@@ -7,12 +7,18 @@ namespace DualSenseTests
     using DualSense::WeaponTriggerStatus;
     using DualSense::IsWeaponFireEdge;
 
-    // Rule: (*, Fired) where previous != Fired -> true. Cover every non-Fired previous state,
-    // including the Unknown first-frame case (a trigger's previous-state member starts out
-    // default-constructed to Unknown, and this must not be mistaken for a fire edge).
-    TEST_F(TriggerFireDetectorFixture, IsWeaponFireEdge_UnknownToFired_IsEdge)
+    // Rule: (*, Fired) where previous was an actually-observed Ready/Firing state -> true.
+    // previous == Unknown is NOT included in "previous != Fired" here -- see the amended rule
+    // below.
+    TEST_F(TriggerFireDetectorFixture, IsWeaponFireEdge_UnknownToFired_IsNotEdge_BaselineNotEdge)
     {
-        EXPECT_TRUE(IsWeaponFireEdge(WeaponTriggerStatus::Unknown, WeaponTriggerStatus::Fired));
+        // Amended rule (post-review): the first observation after a previous-state reset to
+        // Unknown is a BASELINE, not an edge. Resets happen on every pad-nil/below-OS-floor
+        // tick -- not just cold start, but also transient Bluetooth reconnect blips -- so
+        // treating Unknown->Fired as an edge would fire a phantom notification + phantom
+        // auto-recoil kick on the exact frame a pad reconnects mid-fire-animation (the
+        // freshly-read status can already be Fired with no observed Ready/Firing in between).
+        EXPECT_FALSE(IsWeaponFireEdge(WeaponTriggerStatus::Unknown, WeaponTriggerStatus::Fired));
     }
 
     TEST_F(TriggerFireDetectorFixture, IsWeaponFireEdge_ReadyToFired_IsEdge)
