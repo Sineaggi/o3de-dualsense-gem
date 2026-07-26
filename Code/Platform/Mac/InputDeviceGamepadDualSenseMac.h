@@ -12,6 +12,10 @@ namespace DualSense
         : public AzFramework::InputDeviceGamepad::Implementation
     {
     public:
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // Allocator
+        AZ_CLASS_ALLOCATOR(InputDeviceGamepadDualSenseMac, AZ::SystemAllocator);
+
         InputDeviceGamepadDualSenseMac(
             AzFramework::InputDeviceGamepad& inputDevice, void* gcController);
         ~InputDeviceGamepadDualSenseMac() override;
