@@ -126,11 +126,12 @@ Service declarations: requires `InputSystemService`, dependent on
 (`AddressPolicy::ById`, `BusIdType = InputDeviceId`, `HandlerPolicy::Single`):
 
 ```cpp
+enum class TriggerEffectMode { Off, Feedback, Weapon, Vibration,
+                                MultiPositionFeedback, MultiPositionVibration, SlopeFeedback };
+
 struct TriggerEffect            // serialize- and behavior-reflected
 {
-    enum class Mode { Off, Feedback, Weapon, Vibration,
-                      MultiPositionFeedback, MultiPositionVibration, SlopeFeedback };
-    Mode  m_mode;
+    TriggerEffectMode m_mode;
     float m_startPosition;      // all positions/strengths normalized 0..1
     float m_endPosition;
     float m_strength;           // or amplitude for vibration modes

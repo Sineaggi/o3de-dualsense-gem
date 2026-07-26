@@ -53,5 +53,5 @@ effect.mode = DualSenseTriggerEffectMode_Weapon
 effect.startPosition = 0.2
 effect.strength = 0.9
 local deviceId = InputDeviceId(InputDeviceGamepad.name, 0)
-DualSenseTriggerEffectRequestBus.Event:SetTriggerEffect(deviceId, DualSenseTrigger_L2, effect)
+DualSenseTriggerEffectRequestBus.Event.SetTriggerEffect(deviceId, DualSenseTrigger_L2, effect)
 ```

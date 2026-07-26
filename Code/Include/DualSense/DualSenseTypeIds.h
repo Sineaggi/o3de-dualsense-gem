@@ -19,5 +19,4 @@ namespace DualSense
 
     // Trigger Effects TypeIds
     inline constexpr const char* DualSenseTriggerEffectTypeId = "{173E97C6-1364-44E4-A642-498F9652AB62}";
-    inline constexpr const char* DualSenseTriggerEffectRequestsTypeId = "{3AC5CF8F-E6E1-4BE3-A133-5EDF2B17F5C7}";
 } // namespace DualSense

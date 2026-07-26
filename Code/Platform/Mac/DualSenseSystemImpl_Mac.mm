@@ -111,6 +111,16 @@ namespace DualSense
             {
                 return; // not a DualSense; leave it to the stock engine backend
             }
+            // Guard against duplicate connect notifications for a controller we already track.
+            // The engine's SetCustomImplementation constructs the new impl BEFORE destroying the
+            // old one; on a same-slot re-swap the old impl's BusDisconnect would null the
+            // single-handler bus slot the new impl just claimed, silently killing trigger effects.
+            // This guard makes that re-swap unreachable from duplicate notifications.
+            if (m_slotTracker.SlotOf((__bridge const void*)controller) != DualSenseSlotTracker::InvalidSlot)
+            {
+                AZLOG_DEBUG("DualSense: duplicate connect notification for an already-tracked controller, ignoring");
+                return;
+            }
             const AZ::u32 preferred = (controller.playerIndex != GCControllerPlayerIndexUnset)
                 ? static_cast<AZ::u32>(controller.playerIndex) : 0;
             const AZ::u32 slot = m_slotTracker.Assign((__bridge const void*)controller, preferred);

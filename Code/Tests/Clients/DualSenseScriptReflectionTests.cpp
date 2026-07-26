@@ -147,4 +147,20 @@ namespace DualSenseTests
         }
     }
 
+    // NOTE: Fix 3 (README-example-shape Lua coverage, adding a test that dispatches
+    // DualSenseTriggerEffectRequestBus.Event.SetTriggerEffect from Lua with a Lua-constructed
+    // InputDeviceId) is BLOCKED. See final-fix-report.md for full evidence: the enum-typed
+    // property assignment ("e.mode = DualSenseTriggerEffectMode_Weapon") marshals correctly, but
+    // `InputDeviceId(InputDeviceGamepad.name, 0)` constructed from Lua silently invokes
+    // InputDeviceId's *default* constructor and discards both arguments (an upstream engine bug
+    // in AzFramework::InputDeviceId::Reflect(), not this gem's code — it lacks a
+    // Script::Attributes::ConstructorOverride, so AZ::ScriptContext's Lua `__call` binding falls
+    // back to the class's auto-registered default constructor per
+    // Code/Framework/AzCore/AzCore/Script/ScriptContext.cpp:5096-5137 and
+    // BehaviorClassBuilder.inl:609). Two Lua-constructed InputDeviceId('gamepad', 0) instances
+    // therefore compare unequal to each other, so the bus dispatch never reaches the addressed
+    // handler. Adding this test as originally specified would either fail (leaving the suite red)
+    // or require silently working around the broken construction, which would defeat the point of
+    // testing the README's exact documented shape. No test added; suite remains 41/41.
+
 } // namespace DualSenseTests
