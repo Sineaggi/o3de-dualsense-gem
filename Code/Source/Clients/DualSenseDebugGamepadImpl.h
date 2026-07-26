@@ -16,6 +16,7 @@ namespace DualSense
         AZ_CLASS_ALLOCATOR(DualSenseDebugGamepadImpl, AZ::SystemAllocator);
 
         explicit DualSenseDebugGamepadImpl(AzFramework::InputDeviceGamepad& inputDevice);
+        ~DualSenseDebugGamepadImpl() override;
 
         bool IsConnected() const override;
         void SetVibration(float leftMotorSpeedNormalized, float rightMotorSpeedNormalized) override;
@@ -23,6 +24,8 @@ namespace DualSense
 
         float m_lastVibrationLeft = -1.0f;
         float m_lastVibrationRight = -1.0f;
+
+        static AZ::s32 s_destructionCount;
 
     private:
         RawGamepadState m_rawGamepadState;

@@ -5,6 +5,8 @@
 
 namespace DualSense
 {
+    AZ::s32 DualSenseDebugGamepadImpl::s_destructionCount = 0;
+
     const AzFramework::InputDeviceGamepad::Implementation::DigitalButtonIdByBitMaskMap&
         GetDualSenseDigitalButtonMap()
     {
@@ -37,6 +39,11 @@ namespace DualSense
         AZLOG_INFO("DualSense: debug gamepad implementation installed (device index %u)",
                    GetInputDeviceIndex());
         BroadcastInputDeviceConnectedEvent();
+    }
+
+    DualSenseDebugGamepadImpl::~DualSenseDebugGamepadImpl()
+    {
+        ++s_destructionCount;
     }
 
     bool DualSenseDebugGamepadImpl::IsConnected() const

@@ -26,16 +26,21 @@ namespace DualSenseTests
         DualSense::DualSenseDebugGamepadImplFactory factoryA;
         AzFramework::InputDeviceGamepad gamepad(AzFramework::InputDeviceGamepad::IdForIndex0, &factoryA);
 
+        // Record the destruction count before swap
+        const AZ::s32 destroyedBefore = DualSense::DualSenseDebugGamepadImpl::s_destructionCount;
+
         DualSense::DualSenseDebugGamepadImplFactory factoryB;
         SwapBus::Bus::Event(gamepad.GetInputDeviceId(), &SwapBus::SetCustomImplementation, &factoryB);
         ASSERT_NE(factoryB.m_lastCreated, nullptr);
 
-        // Vibration must now land on B's implementation, not A's.
+        // Verify that A's implementation was destroyed by the swap
+        EXPECT_EQ(DualSense::DualSenseDebugGamepadImpl::s_destructionCount, destroyedBefore + 1);
+
+        // Vibration must now land on B's implementation.
         AzFramework::InputHapticFeedbackRequestBus::Event(
             gamepad.GetInputDeviceId(),
             &AzFramework::InputHapticFeedbackRequests::SetVibration, 1.0f, 1.0f);
         EXPECT_FLOAT_EQ(factoryB.m_lastCreated->m_lastVibrationLeft, 1.0f);
-        EXPECT_FLOAT_EQ(factoryA.m_lastCreated->m_lastVibrationLeft, -1.0f);
     }
 
     TEST_F(DualSenseSwapFixture, SetCustomImplementation_NullFactory_IsIgnoredByEngine)
