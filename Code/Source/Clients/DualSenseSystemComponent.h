@@ -5,6 +5,7 @@
 #include <AzCore/Component/TickBus.h>
 #include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 #include <DualSense/DualSenseBus.h>
+#include <Clients/DualSenseSystemImpl.h>
 
 namespace DualSense
 {
@@ -53,6 +54,9 @@ namespace DualSense
         // AZTickBus interface implementation
         void OnTick(float deltaTime, AZ::ScriptTimePoint time) override;
         ////////////////////////////////////////////////////////////////////////
+
+    private:
+        AZStd::unique_ptr<DualSenseSystemImpl> m_impl;
     };
 
 } // namespace DualSense

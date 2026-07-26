@@ -5,4 +5,5 @@
 #      ../Include/Mac/DualSenseMac.h
 
 set(FILES
+    ../Common/Unimplemented/DualSenseSystemImpl_Unimplemented.cpp
 )

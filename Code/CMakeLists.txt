@@ -37,6 +37,8 @@ ly_add_target(
 ly_add_target(
     NAME ${gem_name}.Private.Object STATIC
     NAMESPACE Gem
+    PLATFORM_INCLUDE_FILES
+        ${pal_dir}/platform_${PAL_PLATFORM_NAME_LOWERCASE}.cmake
     FILES_CMAKE
         dualsense_private_files.cmake
         ${pal_dir}/dualsense_private_files.cmake

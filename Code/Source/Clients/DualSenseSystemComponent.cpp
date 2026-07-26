@@ -73,16 +73,22 @@ namespace DualSense
     {
         DualSenseRequestBus::Handler::BusConnect();
         AZ::TickBus::Handler::BusConnect();
+        m_impl = DualSenseSystemImpl::Create(*this);
     }
 
     void DualSenseSystemComponent::Deactivate()
     {
+        m_impl.reset();
         AZ::TickBus::Handler::BusDisconnect();
         DualSenseRequestBus::Handler::BusDisconnect();
     }
 
     void DualSenseSystemComponent::OnTick([[maybe_unused]] float deltaTime, [[maybe_unused]] AZ::ScriptTimePoint time)
     {
+        if (m_impl)
+        {
+            m_impl->Tick();
+        }
     }
 
     void DualSenseSystemComponent::SwapSlotToFactory(
