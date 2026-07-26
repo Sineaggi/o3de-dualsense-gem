@@ -5,6 +5,8 @@
 #      ../Include/Mac/DualSenseMac.h
 
 set(FILES
+    DualSenseHapticsMac.h
+    DualSenseHapticsMac.mm
     DualSenseMacGamepadImplFactory.h
     DualSenseSystemImpl_Mac.mm
     InputDeviceGamepadDualSenseMac.h

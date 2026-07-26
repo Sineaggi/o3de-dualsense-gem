@@ -22,3 +22,13 @@ With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
   - [ ] Both sticks report full range of motion with no drift at rest
 - [ ] Sticks at rest produce no held events (deadzones effective)
 - [ ] Repeat the above over Bluetooth (not just USB)
+
+## Phase 1 — rumble
+
+With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
+
+- [ ] `dualsense_rumble 1 0` -> strong vibration concentrated on the left grip
+- [ ] `dualsense_rumble 0 1` -> strong vibration concentrated on the right grip
+- [ ] `dualsense_rumble 0 0` -> silence
+- [ ] `dualsense_rumble 0.2 0.2` -> clearly weaker than `dualsense_rumble 1 1`
+- [ ] Disconnect mid-rumble -> no crash, clean restore logs

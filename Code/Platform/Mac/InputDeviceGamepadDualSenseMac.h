@@ -1,9 +1,12 @@
 #pragma once
 
 #include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
+#include <AzCore/std/smart_ptr/unique_ptr.h>
 
 namespace DualSense
 {
+    class DualSenseHapticsMac;
+
     //! Standard-gamepad backend for a DualSense driven by GameController.framework.
     class InputDeviceGamepadDualSenseMac
         : public AzFramework::InputDeviceGamepad::Implementation
@@ -22,6 +25,7 @@ namespace DualSense
     private:
         RawGamepadState m_rawGamepadState;
         void* m_controller = nullptr; // GCController*, retained
+        AZStd::unique_ptr<DualSenseHapticsMac> m_haptics;
         bool m_wasConnected = false;
     };
 } // namespace DualSense

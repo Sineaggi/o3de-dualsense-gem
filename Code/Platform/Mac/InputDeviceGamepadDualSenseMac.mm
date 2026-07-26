@@ -1,6 +1,7 @@
 #include "InputDeviceGamepadDualSenseMac.h"
 #include <Clients/DualSenseGamepadButtonMap.h>
 #include "DualSenseMacGamepadImplFactory.h"
+#include "DualSenseHapticsMac.h"
 
 #include <AzCore/Console/ILogger.h>
 
@@ -25,6 +26,8 @@ namespace DualSense
             CFRetain(m_controller);
         }
 
+        m_haptics = AZStd::make_unique<DualSenseHapticsMac>(gcController);
+
         // Values from the engine's InputDeviceGamepad_Mac.mm (Step 1): that file never
         // overrides these RawGamepadState fields, so it runs with the engine's own
         // untouched defaults (see RawGamepadState::RawGamepadState in
@@ -43,6 +46,7 @@ namespace DualSense
         {
             BroadcastInputDeviceDisconnectedEvent();
         }
+        m_haptics.reset(); // must be destroyed before the controller is released below
         if (m_controller)
         {
             CFRelease(m_controller); // balances the CFRetain in the constructor
@@ -54,9 +58,12 @@ namespace DualSense
         return m_controller != nullptr;
     }
 
-    void InputDeviceGamepadDualSenseMac::SetVibration(float, float)
+    void InputDeviceGamepadDualSenseMac::SetVibration(float leftMotorSpeedNormalized, float rightMotorSpeedNormalized)
     {
-        // Implemented in the haptics task (CoreHaptics handle engines).
+        if (m_haptics)
+        {
+            m_haptics->SetVibration(leftMotorSpeedNormalized, rightMotorSpeedNormalized);
+        }
     }
 
     void InputDeviceGamepadDualSenseMac::SetLightBarColor(const AZ::Color&)
