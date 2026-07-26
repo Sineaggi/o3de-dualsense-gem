@@ -8,7 +8,7 @@ extended inputs.
 Status: Phase 1 complete — on macOS (11.3+) a DualSense works as the standard
 gamepad device with rumble (CoreHaptics) and light bar. Next: trigger-effect API
 (phase 2). Console commands: `dualsense_rumble`, `dualsense_lightbar`,
-`dualsense_debug_swap`, `dualsense_debug_restore`. Hardware verification pending — see docs/hardware-smoke.md.
+`dualsense_debug_swap`, `dualsense_debug_restore`. Hardware-verified on USB (2026-07-26); Bluetooth untested — see docs/hardware-smoke.md.
 
 ## Setup
 
