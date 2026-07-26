@@ -3,9 +3,9 @@
 Run after each phase lands. Record date + result per line.
 
 ## Phase 0 — swap proof (Editor, no hardware needed)
-- [ ] `dualsense_debug_swap` logs install line, no errors
-- [ ] `dualsense_debug_restore` restores; no "skipped" warning in Editor
-- [ ] Regular paired controller (if any) still works after restore
+- [x] `dualsense_debug_swap` logs install line, no errors (2026-07-26, Editor profile build)
+- [x] `dualsense_debug_restore` restores; no "skipped" warning in Editor (2026-07-26)
+- [x] Regular paired controller (if any) still works after restore — N/A, no controller paired (2026-07-26)
 
 ## Phase 1 — Mac input
 
