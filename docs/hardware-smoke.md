@@ -50,3 +50,18 @@ With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
 - [ ] Disconnect mid-color-change -> no crash, clean restore logs — *not run (disconnect-mid-rumble covers the teardown path)*
 - [ ] Reconnect -> lightbar state sane — *reconnects verified repeatedly; lightbar state not specifically observed*
 - [ ] Repeat over Bluetooth — **deferred 2026-07-26**
+
+## Phase 2 — adaptive triggers
+
+**2026-07-26: full matrix PASS on hardware (USB, real DualSense) — all modes felt correct incl. slope/multi-position (macOS >= 12.3 confirmed); unplug-with-active-effect clean; BT still deferred.**
+
+With a DualSense connected via the testbed Editor (USB; BT deferred).
+
+- [x] `dualsense_trigger r2 weapon` -> R2 has a distinct resistance zone with a "break" like a gun trigger
+- [x] `dualsense_trigger r2 feedback` -> constant resistance from ~30% pull
+- [x] `dualsense_trigger both vibration` -> both triggers buzz when pulled past ~20%
+- [x] `dualsense_trigger r2 slope` -> resistance ramps up across the pull (macOS 12.3+)
+- [x] `dualsense_trigger r2 multifeedback` -> stepped resistance zones (macOS 12.3+)
+- [x] `dualsense_trigger_clear` -> both triggers neutral again
+- [x] Unplug with an active trigger effect -> no crash, clean restore
+- [x] Reconnect -> triggers neutral (no stale effect)

@@ -10,4 +10,5 @@ set(FILES
     Source/Clients/DualSenseDebugGamepadImpl.h
     Source/Clients/DualSenseSlotTracker.h
     Source/Clients/DualSenseSlotTracker.cpp
+    Source/Clients/DualSenseTriggerEffectMapping.cpp
 )

@@ -3,6 +3,8 @@
 #include "DualSenseMacGamepadImplFactory.h"
 #include "DualSenseHapticsMac.h"
 
+#include <DualSense/DualSenseTriggerEffectMapping.h>
+
 #include <AzCore/Console/ILogger.h>
 #include <AzCore/Math/Color.h>
 
@@ -39,10 +41,23 @@ namespace DualSense
         m_rawGamepadState.m_thumbStickMaximumValue = 1.0f;
         m_rawGamepadState.m_thumbStickLeftDeadZone = 0.0f;
         m_rawGamepadState.m_thumbStickRightDeadZone = 0.0f;
+
+        DualSenseTriggerEffectRequestBus::Handler::BusConnect(
+            AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()));
     }
 
     InputDeviceGamepadDualSenseMac::~InputDeviceGamepadDualSenseMac()
     {
+        // Best-effort: return both triggers to neutral before disconnecting the bus and
+        // tearing down the controller/haptics below. m_controller is still valid at this
+        // point, and every ObjC send along this path -- the pad/trigger resolution in
+        // SetTriggerEffect as well as the mode-setter calls inside ApplyEffectToTrigger --
+        // is individually @try/@catch-guarded, so this is safe even against a controller
+        // that has already gone away (dead-controller hardening, same rationale as
+        // DualSenseHapticsMac).
+        ClearTriggerEffects();
+        DualSenseTriggerEffectRequestBus::Handler::BusDisconnect();
+
         if (m_wasConnected)
         {
             BroadcastInputDeviceDisconnectedEvent();
@@ -160,6 +175,221 @@ namespace DualSense
             m_rawGamepadState.m_thumbStickRightYState = 0.0f;
         }
         ProcessRawGamepadState(m_rawGamepadState);
+    }
+
+    void InputDeviceGamepadDualSenseMac::SetTriggerEffect(Trigger trigger, const TriggerEffect& effect)
+    {
+        if (@available(macOS 11.3, *))
+        {
+            // `m_controller.extendedGamepad` is statically a GCExtendedGamepad*; the
+            // isKindOfClass check below is what actually proves the runtime object is a
+            // GCDualSenseGamepad, making this C-style downcast safe. Once that check
+            // passes, `pad.leftTrigger`/`pad.rightTrigger` are declared by the SDK as
+            // GCDualSenseAdaptiveTrigger* (GCDualSenseGamepad.h), not the base
+            // GCControllerButtonInput* of GCExtendedGamepad, so no further cast is needed
+            // to pass them into ApplyEffectToTrigger below.
+            // The whole resolution block is @try/@catch-guarded, consistent with the rest of
+            // this file's dead-controller hardening: a controller that has gone away can throw
+            // on any of these ObjC sends, not just inside ApplyEffectToTrigger.
+            GCDualSenseGamepad* pad = nil;
+            @try
+            {
+                pad = (GCDualSenseGamepad*)((__bridge GCController*)m_controller).extendedGamepad;
+                if (![pad isKindOfClass:[GCDualSenseGamepad class]])
+                {
+                    return;
+                }
+            }
+            @catch (NSException* exception)
+            {
+                AZLOG_DEBUG("DualSense: pad resolution threw on a dead controller, ignoring: %s",
+                            exception.reason ? exception.reason.UTF8String : "unknown");
+                return;
+            }
+
+            TriggerEffect resolved = effect.Clamped();
+            bool needsExtended = RequiresExtendedTriggerApi(resolved.m_mode);
+            if (needsExtended)
+            {
+                if (@available(macOS 12.3, *))
+                {
+                    // Extended API is available on this OS; keep the effect as-is.
+                }
+                else
+                {
+                    resolved = DegradeToBaselineApi(resolved);
+                    AZLOG_DEBUG("DualSense: degraded trigger effect mode %u to baseline API (macOS < 12.3)",
+                                static_cast<AZ::u32>(effect.m_mode));
+                }
+            }
+
+            void* leftTrigger = nullptr;
+            void* rightTrigger = nullptr;
+            @try
+            {
+                leftTrigger = (__bridge void*)pad.leftTrigger;
+                rightTrigger = (__bridge void*)pad.rightTrigger;
+            }
+            @catch (NSException* exception)
+            {
+                AZLOG_DEBUG("DualSense: trigger property read threw on a dead controller, ignoring: %s",
+                            exception.reason ? exception.reason.UTF8String : "unknown");
+                return;
+            }
+
+            if (trigger == Trigger::L2 || trigger == Trigger::Both)
+            {
+                ApplyEffectToTrigger(leftTrigger, resolved);
+            }
+            if (trigger == Trigger::R2 || trigger == Trigger::Both)
+            {
+                ApplyEffectToTrigger(rightTrigger, resolved);
+            }
+        }
+    }
+
+    void InputDeviceGamepadDualSenseMac::ClearTriggerEffects()
+    {
+        SetTriggerEffect(Trigger::Both, TriggerEffect{});
+    }
+
+    void InputDeviceGamepadDualSenseMac::ApplyEffectToTrigger(void* gcAdaptiveTrigger, const TriggerEffect& clamped)
+    {
+        if (@available(macOS 11.3, *))
+        {
+            if (!gcAdaptiveTrigger)
+            {
+                return;
+            }
+            // See the downcast comment in SetTriggerEffect above: the caller only ever
+            // passes pad.leftTrigger/pad.rightTrigger from a GCDualSenseGamepad-gated
+            // pad, so this __bridge cast back from the opaque void* to the concrete
+            // GCDualSenseAdaptiveTrigger* is safe.
+            GCDualSenseAdaptiveTrigger* trigger = (__bridge GCDualSenseAdaptiveTrigger*)gcAdaptiveTrigger;
+
+            switch (clamped.m_mode)
+            {
+            case TriggerEffectMode::Off:
+                @try
+                {
+                    [trigger setModeOff];
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: setModeOff threw on a dead controller, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                }
+                break;
+
+            case TriggerEffectMode::Feedback:
+                @try
+                {
+                    [trigger setModeFeedbackWithStartPosition:clamped.m_startPosition
+                                             resistiveStrength:clamped.m_strength];
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: setModeFeedbackWithStartPosition:resistiveStrength: threw on a dead controller, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                }
+                break;
+
+            case TriggerEffectMode::Weapon:
+                @try
+                {
+                    [trigger setModeWeaponWithStartPosition:clamped.m_startPosition
+                                                 endPosition:clamped.m_endPosition
+                                           resistiveStrength:clamped.m_strength];
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: setModeWeaponWithStartPosition:endPosition:resistiveStrength: threw on a dead controller, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                }
+                break;
+
+            case TriggerEffectMode::Vibration:
+                @try
+                {
+                    [trigger setModeVibrationWithStartPosition:clamped.m_startPosition
+                                                      amplitude:clamped.m_strength
+                                                      frequency:clamped.m_frequency];
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: setModeVibrationWithStartPosition:amplitude:frequency: threw on a dead controller, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                }
+                break;
+
+            case TriggerEffectMode::SlopeFeedback:
+                // Intentional belt-and-suspenders: degradation already prevents these modes
+                // below 12.3 (see DegradeToBaselineApi/RequiresExtendedTriggerApi above).
+                if (@available(macOS 12.3, *))
+                {
+                    @try
+                    {
+                        [trigger setModeSlopeFeedbackWithStartPosition:clamped.m_startPosition
+                                                            endPosition:clamped.m_endPosition
+                                                          startStrength:clamped.m_strength
+                                                            endStrength:clamped.m_endStrength];
+                    }
+                    @catch (NSException* exception)
+                    {
+                        AZLOG_DEBUG("DualSense: setModeSlopeFeedbackWithStartPosition:... threw on a dead controller, ignoring: %s",
+                                    exception.reason ? exception.reason.UTF8String : "unknown");
+                    }
+                }
+                break;
+
+            case TriggerEffectMode::MultiPositionFeedback:
+                // Intentional belt-and-suspenders: degradation already prevents these modes
+                // below 12.3 (see DegradeToBaselineApi/RequiresExtendedTriggerApi above).
+                if (@available(macOS 12.3, *))
+                {
+                    GCDualSenseAdaptiveTriggerPositionalResistiveStrengths strengths;
+                    for (int i = 0; i < 10; ++i)
+                    {
+                        strengths.values[i] = clamped.m_positionalValues[i];
+                    }
+                    @try
+                    {
+                        [trigger setModeFeedbackWithResistiveStrengths:strengths];
+                    }
+                    @catch (NSException* exception)
+                    {
+                        AZLOG_DEBUG("DualSense: setModeFeedbackWithResistiveStrengths: threw on a dead controller, ignoring: %s",
+                                    exception.reason ? exception.reason.UTF8String : "unknown");
+                    }
+                }
+                break;
+
+            case TriggerEffectMode::MultiPositionVibration:
+                // Intentional belt-and-suspenders: degradation already prevents these modes
+                // below 12.3 (see DegradeToBaselineApi/RequiresExtendedTriggerApi above).
+                if (@available(macOS 12.3, *))
+                {
+                    GCDualSenseAdaptiveTriggerPositionalAmplitudes amplitudes;
+                    for (int i = 0; i < 10; ++i)
+                    {
+                        amplitudes.values[i] = clamped.m_positionalValues[i];
+                    }
+                    @try
+                    {
+                        [trigger setModeVibrationWithAmplitudes:amplitudes frequency:clamped.m_frequency];
+                    }
+                    @catch (NSException* exception)
+                    {
+                        AZLOG_DEBUG("DualSense: setModeVibrationWithAmplitudes:frequency: threw on a dead controller, ignoring: %s",
+                                    exception.reason ? exception.reason.UTF8String : "unknown");
+                    }
+                }
+                break;
+
+            default:
+                break;
+            }
+        }
     }
 
     AZStd::unique_ptr<AzFramework::InputDeviceGamepad::Implementation> DualSenseMacGamepadImplFactory::Create(
