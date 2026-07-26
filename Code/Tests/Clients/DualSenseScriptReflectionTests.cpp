@@ -29,6 +29,21 @@ namespace DualSenseTests
         EXPECT_NE(bc.m_ebuses.find("DualSenseHapticPulseRequestBus"), bc.m_ebuses.end());
     }
 
+    // Phase 2.6, Task 1: PlayHapticBuzz/StopHaptics (frozen additions to
+    // DualSenseHapticPulseRequests, Code/Include/DualSense/DualSenseHaptics.h). Asserts both new
+    // events are actually reflected onto the bus's BehaviorEBus, not just that the bus itself
+    // exists (which BehaviorContext_RegistersHapticPulseBus above already covers).
+    TEST_F(ScriptReflectionFixture, BehaviorContext_RegistersHapticBuzzAndStopEvents)
+    {
+        AZ::BehaviorContext bc;
+        DualSense::ReflectDualSenseHapticPulseBus(&bc);
+
+        auto ebusIt = bc.m_ebuses.find("DualSenseHapticPulseRequestBus");
+        ASSERT_NE(ebusIt, bc.m_ebuses.end());
+        EXPECT_NE(ebusIt->second->m_events.find("PlayHapticBuzz"), ebusIt->second->m_events.end());
+        EXPECT_NE(ebusIt->second->m_events.find("StopHaptics"), ebusIt->second->m_events.end());
+    }
+
     // Phase 2.5, Task 2: DualSenseTriggerNotificationBus (weapon-fire notifications) is
     // reflected via its own free function, mirroring ReflectDualSenseHapticPulseBus above.
     TEST_F(ScriptReflectionFixture, BehaviorContext_RegistersTriggerNotificationBus)
@@ -308,6 +323,21 @@ namespace DualSenseTests
                 ++m_recoilCallCount;
             }
 
+            // Phase 2.6, Task 1 additions.
+            void PlayHapticBuzz(float leftIntensity, float rightIntensity, float sharpness, float durationSeconds) override
+            {
+                m_lastBuzzLeftIntensity = leftIntensity;
+                m_lastBuzzRightIntensity = rightIntensity;
+                m_lastBuzzSharpness = sharpness;
+                m_lastBuzzDurationSeconds = durationSeconds;
+                ++m_buzzCallCount;
+            }
+
+            void StopHaptics() override
+            {
+                ++m_stopCallCount;
+            }
+
             float m_lastLeftIntensity = 0.0f;
             float m_lastRightIntensity = 0.0f;
             float m_lastSharpness = 0.0f;
@@ -318,6 +348,13 @@ namespace DualSenseTests
             float m_lastRecoilIntensity = 0.0f;
             float m_lastRecoilSharpness = 0.0f;
             int m_recoilCallCount = 0;
+
+            float m_lastBuzzLeftIntensity = 0.0f;
+            float m_lastBuzzRightIntensity = 0.0f;
+            float m_lastBuzzSharpness = 0.0f;
+            float m_lastBuzzDurationSeconds = 0.0f;
+            int m_buzzCallCount = 0;
+            int m_stopCallCount = 0;
         };
     } // namespace
 
@@ -370,6 +407,52 @@ namespace DualSenseTests
         EXPECT_TRUE(handler.m_lastRecoilEnabled);
         EXPECT_FLOAT_EQ(handler.m_lastRecoilIntensity, 0.6f);
         EXPECT_FLOAT_EQ(handler.m_lastRecoilSharpness, 0.3f);
+    }
+
+    // Phase 2.6, Task 1: same dispatch shape as Lua_HapticPulseDispatchesThroughRequestBus above,
+    // but for the new PlayHapticBuzz event (sustained buzz, shares the continuous actuator slot
+    // with SetVibration on Mac -- see DualSenseHapticsMac.mm). Drives it entirely from Lua and
+    // asserts the fixture handler received exactly the values script passed, including the new
+    // durationSeconds parameter.
+    TEST_F(ScriptRoundTripFixture, Lua_HapticBuzzDispatchesThroughRequestBus)
+    {
+        AzFramework::InputDeviceId::Reflect(m_behaviorContext);
+        DualSense::TriggerEffect::Reflect(m_behaviorContext); // also reflects DualSense_GetGamepadDeviceId
+        DualSense::ReflectDualSenseHapticPulseBus(m_behaviorContext);
+
+        TestHapticPulseHandler handler(AzFramework::InputDeviceGamepad::IdForIndex0);
+
+        AZ::ScriptContext sc;
+        sc.BindTo(m_behaviorContext);
+
+        EXPECT_TRUE(sc.Execute("deviceId = DualSense_GetGamepadDeviceId(0)"));
+        EXPECT_TRUE(sc.Execute("DualSenseHapticPulseRequestBus.Event.PlayHapticBuzz(deviceId, 0.6, 0.3, 0.3, 1.5)"));
+
+        ASSERT_EQ(handler.m_buzzCallCount, 1);
+        EXPECT_FLOAT_EQ(handler.m_lastBuzzLeftIntensity, 0.6f);
+        EXPECT_FLOAT_EQ(handler.m_lastBuzzRightIntensity, 0.3f);
+        EXPECT_FLOAT_EQ(handler.m_lastBuzzSharpness, 0.3f);
+        EXPECT_FLOAT_EQ(handler.m_lastBuzzDurationSeconds, 1.5f);
+    }
+
+    // Phase 2.6, Task 1: same dispatch shape, but for the new StopHaptics event (clears
+    // gem-issued transient + continuous/buzz haptics on both sides; never touches trigger
+    // effects). StopHaptics takes no scalar arguments beyond the implicit deviceId.
+    TEST_F(ScriptRoundTripFixture, Lua_StopHapticsDispatchesThroughRequestBus)
+    {
+        AzFramework::InputDeviceId::Reflect(m_behaviorContext);
+        DualSense::TriggerEffect::Reflect(m_behaviorContext); // also reflects DualSense_GetGamepadDeviceId
+        DualSense::ReflectDualSenseHapticPulseBus(m_behaviorContext);
+
+        TestHapticPulseHandler handler(AzFramework::InputDeviceGamepad::IdForIndex0);
+
+        AZ::ScriptContext sc;
+        sc.BindTo(m_behaviorContext);
+
+        EXPECT_TRUE(sc.Execute("deviceId = DualSense_GetGamepadDeviceId(0)"));
+        EXPECT_TRUE(sc.Execute("DualSenseHapticPulseRequestBus.Event.StopHaptics(deviceId)"));
+
+        ASSERT_EQ(handler.m_stopCallCount, 1);
     }
 
 } // namespace DualSenseTests
