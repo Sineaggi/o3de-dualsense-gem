@@ -1,0 +1,10 @@
+find_library(GAME_CONTROLLER_FRAMEWORK GameController)
+find_library(CORE_HAPTICS_FRAMEWORK CoreHaptics)
+find_library(FOUNDATION_FRAMEWORK Foundation)
+
+set(LY_BUILD_DEPENDENCIES
+    PRIVATE
+        ${GAME_CONTROLLER_FRAMEWORK}
+        ${CORE_HAPTICS_FRAMEWORK}
+        ${FOUNDATION_FRAMEWORK}
+)

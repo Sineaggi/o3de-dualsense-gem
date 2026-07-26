@@ -5,4 +5,5 @@
 #      ../Include/Linux/DualSenseLinux.h
 
 set(FILES
+    ../Common/Unimplemented/DualSenseSystemImpl_Unimplemented.cpp
 )
