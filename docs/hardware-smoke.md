@@ -65,3 +65,16 @@ With a DualSense connected via the testbed Editor (USB; BT deferred).
 - [x] `dualsense_trigger_clear` -> both triggers neutral again
 - [x] Unplug with an active trigger effect -> no crash, clean restore
 - [x] Reconnect -> triggers neutral (no stale effect)
+
+## Phase 2.5 — recoil
+
+With a DualSense connected via the testbed Editor (USB; BT deferred).
+
+- [ ] `dualsense_fire_demo r2` -> R2 has weapon resistance and a sharp kick felt exactly on trigger break
+- [ ] `dualsense_fire_demo l2` -> L2 has weapon resistance and auto-recoil kick
+- [ ] `dualsense_fire_demo both` -> both triggers have weapon resistance and synchronized kicks on each break
+- [ ] `dualsense_fire_demo_off` -> no more kicks, triggers return to neutral
+- [ ] `dualsense_pulse 1 0` -> sharp isolated kick felt in left actuator
+- [ ] `dualsense_pulse 0 1` -> sharp isolated kick felt in right actuator
+- [ ] Unplug with auto-recoil active -> no crash, no lingering haptic state, clean restore
+- [ ] Reconnect after unplug -> no phantom kick on reconnect (baseline-not-edge correctness verified)

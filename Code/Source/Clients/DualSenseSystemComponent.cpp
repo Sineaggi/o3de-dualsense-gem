@@ -316,6 +316,133 @@ namespace DualSense
         }
         AZ_CONSOLEFREEFUNC(dualsense_trigger_clear, AZ::ConsoleFunctorFlags::DontReplicate,
             "Clear all trigger effects for a gamepad slot: dualsense_trigger_clear [slot]");
+
+        static void dualsense_fire_demo(const AZ::ConsoleCommandContainer& arguments)
+        {
+            if (arguments.empty() || arguments.size() > 2)
+            {
+                AZLOG_INFO("Usage: dualsense_fire_demo [l2|r2|both] [slot]");
+                return;
+            }
+
+            AZStd::string triggerStr = "r2";  // default
+            AZ::u32 slot = 0;
+
+            if (!arguments.empty())
+            {
+                triggerStr = AZStd::string(arguments[0]);
+            }
+            if (arguments.size() >= 2)
+            {
+                slot = static_cast<AZ::u32>(strtoul(AZStd::string(arguments[1]).c_str(), nullptr, 10));
+            }
+
+            // Parse trigger
+            Trigger trigger;
+            if (triggerStr == "l2")
+            {
+                trigger = Trigger::L2;
+            }
+            else if (triggerStr == "r2")
+            {
+                trigger = Trigger::R2;
+            }
+            else if (triggerStr == "both")
+            {
+                trigger = Trigger::Both;
+            }
+            else
+            {
+                AZLOG_INFO("Usage: dualsense_fire_demo [l2|r2|both] [slot]");
+                return;
+            }
+
+            const AzFramework::InputDeviceId deviceId = AzFramework::InputDeviceGamepad::IdForIndexN(slot);
+
+            // Set weapon trigger effect (same preset as dualsense_trigger)
+            TriggerEffect effect;
+            effect.m_mode = TriggerEffectMode::Weapon;
+            effect.m_startPosition = 0.2f;
+            effect.m_endPosition = 0.6f;
+            effect.m_strength = 0.9f;
+
+            DualSenseTriggerEffectRequestBus::Event(
+                deviceId,
+                &DualSenseTriggerEffectRequests::SetTriggerEffect,
+                trigger,
+                effect);
+
+            // Enable auto-recoil for the specified trigger(s)
+            DualSenseHapticPulseRequestBus::Event(
+                deviceId,
+                &DualSenseHapticPulseRequests::SetAutoRecoil,
+                trigger,
+                true,
+                0.9f,
+                0.7f);
+
+            AZLOG_INFO("DualSense: fire demo activated for %s trigger (slot %u) — pull the trigger!", triggerStr.c_str(), slot);
+        }
+        AZ_CONSOLEFREEFUNC(dualsense_fire_demo, AZ::ConsoleFunctorFlags::DontReplicate,
+            "Activate demo fire feel (weapon effect + auto-recoil): dualsense_fire_demo [l2|r2|both] [slot]");
+
+        static void dualsense_fire_demo_off(const AZ::ConsoleCommandContainer& arguments)
+        {
+            const AZ::u32 slot = SlotFromArgs(arguments);
+            const AzFramework::InputDeviceId deviceId = AzFramework::InputDeviceGamepad::IdForIndexN(slot);
+
+            // Clear all trigger effects
+            DualSenseTriggerEffectRequestBus::Event(
+                deviceId,
+                &DualSenseTriggerEffectRequests::ClearTriggerEffects);
+
+            // Disable auto-recoil for both triggers
+            DualSenseHapticPulseRequestBus::Event(
+                deviceId,
+                &DualSenseHapticPulseRequests::SetAutoRecoil,
+                Trigger::Both,
+                false,
+                0.0f,
+                0.0f);
+
+            AZLOG_INFO("DualSense: fire demo deactivated for gamepad slot %u", slot);
+        }
+        AZ_CONSOLEFREEFUNC(dualsense_fire_demo_off, AZ::ConsoleFunctorFlags::DontReplicate,
+            "Deactivate demo fire feel: dualsense_fire_demo_off [slot]");
+
+        static void dualsense_pulse(const AZ::ConsoleCommandContainer& arguments)
+        {
+            if (arguments.size() < 2 || arguments.size() > 4)
+            {
+                AZLOG_INFO("Usage: dualsense_pulse <left 0-1> <right 0-1> [sharpness] [slot]");
+                return;
+            }
+
+            const float left = static_cast<float>(atof(AZStd::string(arguments[0]).c_str()));
+            const float right = static_cast<float>(atof(AZStd::string(arguments[1]).c_str()));
+            float sharpness = 0.5f;  // default
+            AZ::u32 slot = 0;
+
+            if (arguments.size() >= 3)
+            {
+                sharpness = static_cast<float>(atof(AZStd::string(arguments[2]).c_str()));
+            }
+            if (arguments.size() >= 4)
+            {
+                slot = static_cast<AZ::u32>(strtoul(AZStd::string(arguments[3]).c_str(), nullptr, 10));
+            }
+
+            DualSenseHapticPulseRequestBus::Event(
+                AzFramework::InputDeviceGamepad::IdForIndexN(slot),
+                &DualSenseHapticPulseRequests::PlayHapticPulse,
+                left,
+                right,
+                sharpness);
+
+            AZLOG_INFO("DualSense: haptic pulse (L:%.2f R:%.2f sharpness:%.2f) sent to slot %u", left, right, sharpness, slot);
+        }
+        AZ_CONSOLEFREEFUNC(dualsense_pulse, AZ::ConsoleFunctorFlags::DontReplicate,
+            "Send a haptic pulse transient: dualsense_pulse <left 0-1> <right 0-1> [sharpness] [slot]");
     } // namespace DebugCommands
 
 } // namespace DualSense
