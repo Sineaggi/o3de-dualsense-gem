@@ -5,6 +5,7 @@
 
 #include <DualSense/DualSenseTypeIds.h>
 #include <DualSense/DualSenseTriggerEffects.h>
+#include <DualSense/DualSenseHaptics.h>
 
 #include <AzCore/Console/IConsole.h>
 #include <AzCore/Console/ILogger.h>
@@ -30,6 +31,7 @@ namespace DualSense
         }
 
         TriggerEffect::Reflect(context);
+        ReflectDualSenseHapticPulseBus(context);
     }
 
     void DualSenseSystemComponent::GetProvidedServices(AZ::ComponentDescriptor::DependencyArrayType& provided)

@@ -44,6 +44,8 @@ namespace DualSense
 
         DualSenseTriggerEffectRequestBus::Handler::BusConnect(
             AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()));
+        DualSenseHapticPulseRequestBus::Handler::BusConnect(
+            AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()));
     }
 
     InputDeviceGamepadDualSenseMac::~InputDeviceGamepadDualSenseMac()
@@ -57,6 +59,7 @@ namespace DualSense
         // DualSenseHapticsMac).
         ClearTriggerEffects();
         DualSenseTriggerEffectRequestBus::Handler::BusDisconnect();
+        DualSenseHapticPulseRequestBus::Handler::BusDisconnect();
 
         if (m_wasConnected)
         {
@@ -251,6 +254,30 @@ namespace DualSense
     void InputDeviceGamepadDualSenseMac::ClearTriggerEffects()
     {
         SetTriggerEffect(Trigger::Both, TriggerEffect{});
+    }
+
+    void InputDeviceGamepadDualSenseMac::PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness)
+    {
+        if (m_haptics)
+        {
+            m_haptics->PlayTransientPulse(leftIntensity, rightIntensity, sharpness);
+        }
+    }
+
+    void InputDeviceGamepadDualSenseMac::SetAutoRecoil(Trigger trigger, bool enabled, float intensity, float sharpness)
+    {
+        // Plain config storage only (Phase 2.5, Task 1): Task 2 wires this into the
+        // Weapon-mode fire-edge detector to fire PlayTransientPulse automatically. No
+        // hardware calls here, so there is nothing to guard/teardown.
+        const AutoRecoilConfig config{ enabled, intensity, sharpness };
+        if (trigger == Trigger::L2 || trigger == Trigger::Both)
+        {
+            m_leftAutoRecoil = config;
+        }
+        if (trigger == Trigger::R2 || trigger == Trigger::Both)
+        {
+            m_rightAutoRecoil = config;
+        }
     }
 
     void InputDeviceGamepadDualSenseMac::ApplyEffectToTrigger(void* gcAdaptiveTrigger, const TriggerEffect& clamped)
