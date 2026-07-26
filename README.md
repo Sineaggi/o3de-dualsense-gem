@@ -142,13 +142,13 @@ hold the axis key, tap a mode key, feel it.
 | `Q`     | Axis = LEFT (L2) |
 | `E`     | Axis = RIGHT (R2) |
 | `W`     | Axis = BOTH (default) |
-| `R`     | Rumble for 1s, both motors (coexistence check: does the active trigger effect survive?) |
+| `R`     | Rumble for 1s, both motors (coexistence check: does the active trigger effect survive?). **Shares the continuous actuator slot with `Y`/`H` haptic buzz** -- starting a buzz while `R`'s 1s rumble is still running keeps the buzz alive (the deferred rumble-zero is skipped); starting `R` after a buzz replaces it with rumble immediately (last writer wins). |
 | `L`     | Cycle light bar color: red -> green -> blue -> white (coexistence check) |
 | `T`     | Haptic tap, both sides |
-| `Y`     | Haptic buzz, both sides, 1.5s |
+| `Y`     | Haptic buzz, both sides, 1.5s. Shares the continuous actuator slot with `R` rumble -- see `R`'s entry above |
 | `U`     | Haptic stop |
 | `G`     | Haptic tap, LEFT side only |
-| `H`     | Haptic buzz, RIGHT side only, 1.0s |
+| `H`     | Haptic buzz, RIGHT side only, 1.0s. Shares the continuous actuator slot with `R` rumble -- see `R`'s entry above |
 | `[`     | Autofire frequency sweep down by 0.02 (re-applies autofire immediately, logs new value) |
 | `]`     | Autofire frequency sweep up by 0.02 (re-applies autofire immediately, logs new value) |
 

@@ -117,6 +117,11 @@ Phase 1 matrix, now checkable.
 - [ ] Reverse order: `R` then a mode key while rumble is still running -> both coexist, no
       interference
 - [ ] Reverse order: `L` then a mode key while a color is set -> both coexist, no interference
+- [ ] Shared-slot semantics: `R` rumble, then `Y`/`H` buzz within the 1s rumble window -> buzz
+      keeps playing for its own full duration (the deferred rumble-zero at 1s is skipped once a
+      buzz has taken the slot); this is expected -- `R` rumble and `Y`/`H` haptic buzz share one
+      continuous actuator slot on Mac (see README key legend), unlike trigger effects vs.
+      rumble/lightbar above, which are independent channels
 
 **Haptics isolation (per-target clears):**
 

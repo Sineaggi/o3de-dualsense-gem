@@ -1,6 +1,7 @@
 #include "DualSenseHapticsMac.h"
 
 #include <AzCore/Console/ILogger.h>
+#include <AzCore/Debug/Trace.h>
 #include <AzCore/Math/MathUtils.h>
 #include <AzCore/std/parallel/atomic.h>
 #include <AzCore/std/smart_ptr/make_shared.h>
@@ -92,6 +93,25 @@ namespace DualSense
             generation.fetch_add(1, AZStd::memory_order_release);
         }
 
+        // Guide gotcha #2: engines auto-stop when idle, and starting an already-running engine is
+        // a documented no-op -- so every play path below can unconditionally call this at entry
+        // instead of tracking run/idle state itself. Guarded the same way every other engine call
+        // in this file is (a dead engine, e.g. the controller unplugged between the null check and
+        // this call, can throw an NSException instead of only populating `error`).
+        void EnsureEngineStarted(DualSenseHapticsMac::HapticSideState* side) API_AVAILABLE(macos(11.3))
+        {
+            CHHapticEngine* engine = (__bridge CHHapticEngine*)side->engine;
+            @try
+            {
+                [engine startAndReturnError:nil];
+            }
+            @catch (NSException* exception)
+            {
+                AZLOG_DEBUG("DualSense: EnsureEngineStarted startAndReturnError: threw on a dead engine, ignoring: %s",
+                            exception.reason ? exception.reason.UTF8String : "unknown");
+            }
+        }
+
         // Replaces side->continuousPlayer with a new infinite continuous player at `intensity`,
         // or stops/clears it when intensity is ~0. This is the rumble (SetVibration) path; it
         // shares side->continuousPlayer with PlayBuzzOnSide below -- see PlayHapticBuzz's header
@@ -103,6 +123,7 @@ namespace DualSense
             {
                 return;
             }
+            EnsureEngineStarted(side);
             ClearCachedPlayer(&side->continuousPlayer, side->generation, "continuous(rumble)");
             if (intensity <= 0.001f)
             {
@@ -190,6 +211,7 @@ namespace DualSense
             {
                 return;
             }
+            EnsureEngineStarted(side);
             ClearCachedPlayer(&side->transientPlayer, side->generation, "transient");
             if (intensity <= 0.001f)
             {
@@ -274,6 +296,7 @@ namespace DualSense
             {
                 return;
             }
+            EnsureEngineStarted(side);
             // Shares side->continuousPlayer with UpdateContinuousSide: clearing here replaces
             // whichever of the two calls last owned the slot (rumble or a previous buzz), and a
             // subsequent SetVibration call will just as readily replace what this call stores --
@@ -400,8 +423,12 @@ namespace DualSense
             // `alive`/`generation` from a CoreHaptics thread at arbitrary times (gotcha #3/#5).
 
             // Guide gotcha #2: engines auto-stop when idle and reset on error. Start-on-demand is
-            // handled by every Update*/Play* function above (a running engine's startAndReturnError
-            // is a no-op per Apple's docs); resetHandler restarts the engine, stoppedHandler (new
+            // handled by EnsureEngineStarted, called at the top of every Update*/Play* function
+            // above (a running engine's startAndReturnError is a no-op per Apple's docs, so calling
+            // it unconditionally on every play call is exactly the documented idiom, not wasted
+            // work); resetHandler restarts the engine after an error-triggered stop (EnsureEngineStarted
+            // only runs when a play call is issued, so this handler is still what recovers an idle
+            // engine that errors with nothing currently trying to play on it), stoppedHandler (new
             // in this task) clears this side's cached players so a later Update*/Play* call
             // rebuilds fresh ones instead of reusing now-invalid players.
             //
@@ -480,6 +507,12 @@ namespace DualSense
 
     DualSenseHapticsMac::~DualSenseHapticsMac()
     {
+        // The alive-flip ordering argument in the loop below (and every other assumption in this
+        // file about "the main thread" being a single serialization domain shared with the
+        // dispatch_async(main queue) handler hops in CreateStartedSide) only holds if this
+        // destructor itself actually runs on the main thread. Turn a silent violation of that
+        // documented assumption into a loud, immediate failure instead of a latent race.
+        AZ_Assert([NSThread isMainThread], "DualSenseHapticsMac must be destroyed on the main thread");
         Stop(); // clears cached players (both slots, both sides) while the engines are still valid
         if (@available(macOS 11.3, *))
         {

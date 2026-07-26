@@ -33,7 +33,9 @@ namespace DualSense
 
         //! One sharp transient kick per side, reusing the same per-handle engines as
         //! SetVibration. Intensities/sharpness are normalized [0,1]; an intensity of ~0
-        //! skips that side entirely (no player is created/started for it).
+        //! stops that side's cached transient player and starts nothing new (no new player
+        //! is created/started, but any existing cached one for that side is torn down first
+        //! -- see PlayHapticBuzz below for why this is "stops", not "skips").
         void PlayTransientPulse(float leftIntensity, float rightIntensity, float sharpness);
 
         //! Sustained buzz per side: a single continuous CHHapticEvent with a finite
@@ -42,7 +44,9 @@ namespace DualSense
         //! whichever call landed most recently simply replaces the cached player for
         //! that side (last writer wins; see the porting guide's CoreHaptics-wins
         //! contention finding, applied here between this class's own two CoreHaptics
-        //! callers of the shared slot). Intensity ~0 skips that side.
+        //! callers of the shared slot). Intensity ~0 stops that side's cached player and
+        //! starts nothing new -- Stop() (which relies on this clear-before-check behavior)
+        //! is implemented as exactly this call with both intensities at 0.
         void PlayHapticBuzz(float leftIntensity, float rightIntensity, float sharpness, float durationSeconds);
 
         //! Stops gem-issued haptics (transient pulses and buzzes/rumble) on both sides:

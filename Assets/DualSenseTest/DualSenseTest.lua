@@ -55,6 +55,7 @@ function DualSenseTest:OnActivate()
     self.ledIndex = 0
     self.rumbleTimeRemaining = 0.0
     self.tickHandler = nil
+    self.buzzSinceRumble = false
 
     self.inputHandlers = inputMultiHandler.ConnectMultiHandlers
     {
@@ -99,6 +100,10 @@ function DualSenseTest:OnDeactivate()
     self.fireHandler = nil
 
     if self.tickHandler ~= nil then
+        -- A rumble was still in flight (OnTick hadn't zeroed it yet): zero it explicitly before
+        -- disconnecting, otherwise the deferred zeroing never happens and rumble is left running
+        -- past this component's lifetime.
+        DualSense_SetRumble(self.Properties.GamepadSlot, 0.0, 0.0)
         self.tickHandler:Disconnect()
         self.tickHandler = nil
     end
@@ -208,12 +213,10 @@ function DualSenseTest:SweepFrequency(delta)
     end
     self.frequency = newFrequency
 
-    local effect = DualSenseTriggerEffect()
-    effect.mode = DualSenseTriggerEffectMode_Vibration
-    effect.startPosition = 0.2
-    effect.strength = 0.9
-    effect.frequency = self.frequency
-    DualSenseTriggerEffectRequestBus.Event.SetTriggerEffect(self.deviceId, self.axis, effect)
+    -- Re-applies the autofire preset at the new frequency; ApplyAutofire already builds the exact
+    -- same effect (mode/startPosition/strength/frequency) and logs it, so build it once there
+    -- instead of duplicating the construction here.
+    self:ApplyAutofire()
 
     Debug.Log(string.format("frequency sweep -> %.3f (autofire re-applied, axis=%s)", self.frequency, self.axisName))
 end
@@ -225,6 +228,7 @@ function DualSenseTest:Rumble()
     Debug.Log("rumble 1s (check: does the active trigger effect survive?)")
 
     self.rumbleTimeRemaining = RUMBLE_DURATION_SECONDS
+    self.buzzSinceRumble = false
     if self.tickHandler == nil then
         self.tickHandler = TickBus.Connect(self, 0)
     end
@@ -233,7 +237,14 @@ end
 function DualSenseTest:OnTick(deltaTime, scriptTime)
     self.rumbleTimeRemaining = self.rumbleTimeRemaining - deltaTime
     if self.rumbleTimeRemaining <= 0.0 then
-        DualSense_SetRumble(self.Properties.GamepadSlot, 0.0, 0.0)
+        -- Rumble and haptic buzz (Y/H) share the same continuous actuator slot on Mac (see
+        -- README "coexistence" note and DualSenseHaptics.h's PlayHapticBuzz doc comment). If a
+        -- buzz was started after this rumble began, it already owns the slot; zeroing rumble here
+        -- would silently kill that buzz early. Skip the zero in that case -- the buzz's own
+        -- duration/HapticStop governs the slot instead.
+        if not self.buzzSinceRumble then
+            DualSense_SetRumble(self.Properties.GamepadSlot, 0.0, 0.0)
+        end
         self.tickHandler:Disconnect()
         self.tickHandler = nil
     end
@@ -258,6 +269,7 @@ function DualSenseTest:HapticTap()
 end
 
 function DualSenseTest:HapticBuzz()
+    self.buzzSinceRumble = true
     DualSenseHapticPulseRequestBus.Event.PlayHapticBuzz(self.deviceId, 0.6, 0.6, 0.3, 1.5)
     Debug.Log("haptic_buzz 1.5s -> intensity=0.6 sharpness=0.3")
 end
@@ -273,6 +285,7 @@ function DualSenseTest:HapticTapLeft()
 end
 
 function DualSenseTest:HapticBuzzRight()
+    self.buzzSinceRumble = true
     DualSenseHapticPulseRequestBus.Event.PlayHapticBuzz(self.deviceId, 0.0, 0.8, 0.8, 1.0)
     Debug.Log("haptic_buzz RIGHT 1.0s -> intensity=0.8 sharpness=0.8")
 end

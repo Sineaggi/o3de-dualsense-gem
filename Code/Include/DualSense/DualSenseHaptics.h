@@ -18,7 +18,10 @@ namespace DualSense
         static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ById;
         using BusIdType = AzFramework::InputDeviceId;
 
-        //! One sharp transient kick. Intensities/sharpness normalized [0,1]; 0 intensity = skip that side.
+        //! One sharp transient kick. Intensities/sharpness normalized [0,1]; intensity ~0 stops
+        //! that side's cached transient player and starts nothing new (see PlayHapticBuzz below
+        //! for why this is phrased as "stops", not "skips": the same load-bearing clear-before-
+        //! check applies to both methods' zero-intensity path).
         virtual void PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness) = 0;
         //! Enable/disable hardware-synchronized auto-recoil for a trigger's Weapon-mode fire
         //! edge. Trigger::Both configures both triggers with the same enabled/intensity/
@@ -29,7 +32,10 @@ namespace DualSense
         //! (SetVibration): last writer wins per side (see the dualsense-porting-guide.md
         //! "Contention with rumble emulation is deterministic: CoreHaptics wins" finding --
         //! applied here between this gem's own two CoreHaptics-backed callers of the shared
-        //! continuous slot, on Mac). Intensity 0 skips that side.
+        //! continuous slot, on Mac). Intensity ~0 stops that side's cached player and starts
+        //! nothing new -- Stop() itself relies on this clear-before-check behavior, so it is not
+        //! a mere "skip" (no player is created for a ~0 call, but any existing cached player for
+        //! that side is torn down first).
         virtual void PlayHapticBuzz(float leftIntensity, float rightIntensity, float sharpness, float durationSeconds) = 0;
         //! Stops gem-issued haptics (transient pulses and buzzes) on both sides. Does not touch
         //! trigger effects; a subsequent SetVibration re-owns the channel.
