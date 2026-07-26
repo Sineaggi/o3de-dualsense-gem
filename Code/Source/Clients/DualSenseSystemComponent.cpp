@@ -149,6 +149,11 @@ namespace DualSense
 
         static void dualsense_rumble(const AZ::ConsoleCommandContainer& arguments)
         {
+            if (arguments.size() == 1)
+            {
+                AZLOG_INFO("Usage: dualsense_rumble <left 0-1> <right 0-1> [slot]");
+                return;
+            }
             float left = 0.5f;
             float right = 0.5f;
             AZ::u32 slot = 0;

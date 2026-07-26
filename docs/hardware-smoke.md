@@ -22,6 +22,7 @@ With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
   - [ ] Both sticks report full range of motion with no drift at rest
 - [ ] Sticks at rest produce no held events (deadzones effective)
 - [ ] Repeat the above over Bluetooth (not just USB)
+- [ ] With DualSense connected, only ONE gamepad slot reports connected (no ghost second slot in logs)
 
 ## Phase 1 — rumble
 

@@ -131,6 +131,33 @@ namespace DualSense
                 m_rawGamepadState.m_thumbStickRightXState = pad.rightThumbstick.xAxis.value;
                 m_rawGamepadState.m_thumbStickRightYState = pad.rightThumbstick.yAxis.value;
             }
+            else
+            {
+                // The pad went away transiently (e.g. briefly nil during a Bluetooth
+                // reconnect blip) while the GCController itself is still around. Zero the
+                // raw state before the unconditional ProcessRawGamepadState call below so a
+                // stale button/trigger/stick value from the last good tick isn't replayed
+                // forever as a "stuck" input until the pad comes back.
+                m_rawGamepadState.m_digitalButtonStates = 0;
+                m_rawGamepadState.m_triggerButtonLState = 0.0f;
+                m_rawGamepadState.m_triggerButtonRState = 0.0f;
+                m_rawGamepadState.m_thumbStickLeftXState = 0.0f;
+                m_rawGamepadState.m_thumbStickLeftYState = 0.0f;
+                m_rawGamepadState.m_thumbStickRightXState = 0.0f;
+                m_rawGamepadState.m_thumbStickRightYState = 0.0f;
+            }
+        }
+        else
+        {
+            // Below @available(macOS 11.3, *): the pad can never be read on this OS version,
+            // so zero the state for the same stuck-input reason as above.
+            m_rawGamepadState.m_digitalButtonStates = 0;
+            m_rawGamepadState.m_triggerButtonLState = 0.0f;
+            m_rawGamepadState.m_triggerButtonRState = 0.0f;
+            m_rawGamepadState.m_thumbStickLeftXState = 0.0f;
+            m_rawGamepadState.m_thumbStickLeftYState = 0.0f;
+            m_rawGamepadState.m_thumbStickRightXState = 0.0f;
+            m_rawGamepadState.m_thumbStickRightYState = 0.0f;
         }
         ProcessRawGamepadState(m_rawGamepadState);
     }

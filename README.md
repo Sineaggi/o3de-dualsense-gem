@@ -1,7 +1,9 @@
 # DualSense Gem for O3DE
 
-Sony DualSense (PS5) controller support for O3DE: adaptive trigger force-feedback
-effects, haptic feedback, light bar, player LEDs, and (planned) extended inputs.
+Sony DualSense (PS5) controller support for O3DE. Implemented today (macOS):
+standard gamepad input, rumble haptic feedback, and light bar color control.
+Planned: adaptive trigger force-feedback effects, HD haptics, player LEDs, and
+extended inputs.
 
 Status: Phase 1 complete — on macOS (11.3+) a DualSense works as the standard
 gamepad device with rumble (CoreHaptics) and light bar. Next: trigger-effect API
