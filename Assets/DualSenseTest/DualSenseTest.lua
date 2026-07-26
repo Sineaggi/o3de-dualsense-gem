@@ -102,8 +102,12 @@ function DualSenseTest:OnDeactivate()
     if self.tickHandler ~= nil then
         -- A rumble was still in flight (OnTick hadn't zeroed it yet): zero it explicitly before
         -- disconnecting, otherwise the deferred zeroing never happens and rumble is left running
-        -- past this component's lifetime.
-        DualSense_SetRumble(self.Properties.GamepadSlot, 0.0, 0.0)
+        -- past this component's lifetime. Same shared-slot guard as OnTick: if a buzz was issued
+        -- after this rumble started, it already owns the shared continuous slot, so zeroing here
+        -- would cut the buzz off early instead of leaving it to run out its own duration.
+        if not self.buzzSinceRumble then
+            DualSense_SetRumble(self.Properties.GamepadSlot, 0.0, 0.0)
+        end
         self.tickHandler:Disconnect()
         self.tickHandler = nil
     end

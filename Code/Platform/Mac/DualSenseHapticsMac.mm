@@ -94,10 +94,14 @@ namespace DualSense
         }
 
         // Guide gotcha #2: engines auto-stop when idle, and starting an already-running engine is
-        // a documented no-op -- so every play path below can unconditionally call this at entry
-        // instead of tracking run/idle state itself. Guarded the same way every other engine call
-        // in this file is (a dead engine, e.g. the controller unplugged between the null check and
-        // this call, can throw an NSException instead of only populating `error`).
+        // a documented no-op -- so every play path below calls this once it's past the
+        // zero-intensity early return (i.e. once it knows it is actually about to build/start a
+        // player), not before it. Calling this before that check would needlessly wake an idle
+        // engine for a Stop()/StopHaptics() call that has nothing to play -- Stop() is exactly
+        // UpdateContinuousSide/PlayTransientOnSide/PlayBuzzOnSide called with 0 intensities, so it
+        // must not force-start anything. Guarded the same way every other engine call in this file
+        // is (a dead engine, e.g. the controller unplugged between the null check and this call,
+        // can throw an NSException instead of only populating `error`).
         void EnsureEngineStarted(DualSenseHapticsMac::HapticSideState* side) API_AVAILABLE(macos(11.3))
         {
             CHHapticEngine* engine = (__bridge CHHapticEngine*)side->engine;
@@ -123,12 +127,12 @@ namespace DualSense
             {
                 return;
             }
-            EnsureEngineStarted(side);
             ClearCachedPlayer(&side->continuousPlayer, side->generation, "continuous(rumble)");
             if (intensity <= 0.001f)
             {
                 return;
             }
+            EnsureEngineStarted(side);
             CHHapticEngine* engine = (__bridge CHHapticEngine*)side->engine;
 
             NSError* error = nil;
@@ -211,12 +215,12 @@ namespace DualSense
             {
                 return;
             }
-            EnsureEngineStarted(side);
             ClearCachedPlayer(&side->transientPlayer, side->generation, "transient");
             if (intensity <= 0.001f)
             {
                 return;
             }
+            EnsureEngineStarted(side);
             CHHapticEngine* engine = (__bridge CHHapticEngine*)side->engine;
 
             NSError* error = nil;
@@ -296,7 +300,6 @@ namespace DualSense
             {
                 return;
             }
-            EnsureEngineStarted(side);
             // Shares side->continuousPlayer with UpdateContinuousSide: clearing here replaces
             // whichever of the two calls last owned the slot (rumble or a previous buzz), and a
             // subsequent SetVibration call will just as readily replace what this call stores --
@@ -306,6 +309,7 @@ namespace DualSense
             {
                 return;
             }
+            EnsureEngineStarted(side);
             CHHapticEngine* engine = (__bridge CHHapticEngine*)side->engine;
 
             NSError* error = nil;
@@ -423,13 +427,16 @@ namespace DualSense
             // `alive`/`generation` from a CoreHaptics thread at arbitrary times (gotcha #3/#5).
 
             // Guide gotcha #2: engines auto-stop when idle and reset on error. Start-on-demand is
-            // handled by EnsureEngineStarted, called at the top of every Update*/Play* function
-            // above (a running engine's startAndReturnError is a no-op per Apple's docs, so calling
-            // it unconditionally on every play call is exactly the documented idiom, not wasted
-            // work); resetHandler restarts the engine after an error-triggered stop (EnsureEngineStarted
-            // only runs when a play call is issued, so this handler is still what recovers an idle
-            // engine that errors with nothing currently trying to play on it), stoppedHandler (new
-            // in this task) clears this side's cached players so a later Update*/Play* call
+            // handled by EnsureEngineStarted, called by every Update*/Play* function above once
+            // each has passed its own zero-intensity early return (i.e. only when it is actually
+            // about to build/start a player) -- a running engine's startAndReturnError is a no-op
+            // per Apple's docs, so calling it unconditionally on every real play call is exactly
+            // the documented idiom, but a Stop()/StopHaptics() call (0 intensity on both sides)
+            // must not force-wake an idle engine just to immediately do nothing with it; resetHandler
+            // restarts the engine after an error-triggered stop (EnsureEngineStarted only runs when
+            // a play call with nonzero intensity is issued, so this handler is still what recovers
+            // an idle engine that errors with nothing currently trying to play on it), stoppedHandler
+            // (new in this task) clears this side's cached players so a later Update*/Play* call
             // rebuilds fresh ones instead of reusing now-invalid players.
             //
             // Guide gotcha #3: both handlers fire on a non-main CoreHaptics thread while
