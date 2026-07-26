@@ -107,30 +107,40 @@ namespace DualSense
         if (auto behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context))
         {
             behaviorContext->EnumProperty<static_cast<AZ::u8>(Trigger::L2)>("DualSenseTrigger_L2")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext->EnumProperty<static_cast<AZ::u8>(Trigger::R2)>("DualSenseTrigger_R2")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext->EnumProperty<static_cast<AZ::u8>(Trigger::Both)>("DualSenseTrigger_Both")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
 
             behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Off)>("DualSenseTriggerEffectMode_Off")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Feedback)>("DualSenseTriggerEffectMode_Feedback")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Weapon)>("DualSenseTriggerEffectMode_Weapon")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Vibration)>("DualSenseTriggerEffectMode_Vibration")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext
                 ->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::MultiPositionFeedback)>(
                     "DualSenseTriggerEffectMode_MultiPositionFeedback")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext
                 ->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::MultiPositionVibration)>(
                     "DualSenseTriggerEffectMode_MultiPositionVibration")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
             behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::SlopeFeedback)>("DualSenseTriggerEffectMode_SlopeFeedback")
-                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense");
 
             behaviorContext->Class<TriggerEffect>("DualSenseTriggerEffect")
                 ->Attribute(AZ::Script::Attributes::Module, "dualsense")
@@ -144,6 +154,16 @@ namespace DualSense
                 ->Property("strength", BehaviorValueProperty(&TriggerEffect::m_strength))
                 ->Property("endStrength", BehaviorValueProperty(&TriggerEffect::m_endStrength))
                 ->Property("frequency", BehaviorValueProperty(&TriggerEffect::m_frequency))
+                // AZStd::array<float, 10> is not a plain scalar: it round-trips to/from Lua only
+                // because AZStd::array has an OnDemandReflection specialization
+                // (AzCore/RTTI/AzStdOnDemandReflection.inl) that BehaviorContext queues
+                // automatically for this property's type, exposing script-side
+                // `effect.positionalValues:Fill(v)` / `:At(i)` / `:Replace(i, v)` / `:size()`
+                // that mutate the real member (BehaviorValueProperty's getter returns T&, not a
+                // copy). Verified end-to-end via a real Lua script in
+                // Tests/Clients/DualSenseScriptReflectionTests.cpp
+                // (ScriptRoundTripFixture.Lua_PositionalValuesArrayFillRoundTripsThroughBehaviorContext) —
+                // no extra RegisterGenericType<AZStd::array<float,10>>() call is required.
                 ->Property("positionalValues", BehaviorValueProperty(&TriggerEffect::m_positionalValues))
                 ;
 
