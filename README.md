@@ -113,16 +113,16 @@ end
 
 `Assets/DualSenseTest/` ships a keyboard-driven hardware test scene that exercises every scripted
 DualSense bus through a real `.inputbindings` asset — the per-binding input path itself (an
-Input Configuration component reading a bindings asset, rather than console commands), which was a
-deferred item from the phase 1 smoke matrix. It supersedes typing console commands by hand for
-hardware passes: hold the axis key, tap a mode key, feel it.
+Input component reading a bindings asset, rather than console commands), which was a deferred item
+from the phase 1 smoke matrix. It supersedes typing console commands by hand for hardware passes:
+hold the axis key, tap a mode key, feel it.
 
 **Setup (30 seconds):**
 
 1. Open any level in the Editor (the testbed project's default level is fine).
 2. Create an entity.
-3. Add an **Input Configuration** component, and set its Input Bindings Asset to
-   `dualsense_test.inputbindings`.
+3. Add an **Input** component (from the StartingPoint Input gem), and set its **Input to event
+   bindings** field to `dualsense_test.inputbindings`.
 4. Add a **Lua Script** component, and set its script to `DualSenseTest.lua`.
 5. Enter game mode (Ctrl+G) with a DualSense connected, and use the keys below. Console output
    (`Debug.Log`) mirrors every action, including the live `OnWeaponTriggerFired` notification feed.

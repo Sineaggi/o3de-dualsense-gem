@@ -239,6 +239,12 @@ function DualSenseTest:OnTick(deltaTime, scriptTime)
     end
 end
 
+-- self.ledIndex starts at 0 (see OnActivate) so the first press lands on LED_COLORS[1] = RED,
+-- giving RED -> GREEN -> BLUE -> WHITE on successive presses, matching this file's declared
+-- LED_COLORS order (and the README key legend). Note this deliberately does NOT reproduce
+-- trigger_test.gd's own runtime order verbatim: Godot's led_i also starts at 0, but its
+-- pre-increment-then-index pattern (`led_i = (led_i + 1) % size; LED_COLORS[led_i]` over a
+-- 0-based array) actually emits GREEN first, not RED, despite declaring RED first in its array.
 function DualSenseTest:CycleLightbar()
     self.ledIndex = (self.ledIndex % #LED_COLORS) + 1
     local color = LED_COLORS[self.ledIndex]
