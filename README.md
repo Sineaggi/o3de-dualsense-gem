@@ -69,7 +69,7 @@ Weapon fire haptic feedback combines three components, all scriptable via reflec
 
 2. **Auto-recoil:** Hardware-synchronized transient kick on trigger-break for Weapon-mode effects (enable via `DualSenseHapticPulseRequestBus::SetAutoRecoil(trigger, enabled, intensity, sharpness)`). When enabled, the controller automatically delivers a haptic pulse at the precise moment the trigger's Weapon-mode activation edge fires, without any gameplay script latency.
 
-3. **Per-shot variation:** For varied recoil per shot within a magazine or magazine load, use `PlayHapticPulse()` from the `OnWeaponTriggerFired` callback. The notification bus fires on the same hardware edge that triggers auto-recoil, allowing gameplay to react with varied intensity pulses (different weapon types, ammo states, etc.).
+3. **Per-shot variation:** For varied recoil per shot within a magazine or magazine load, use `PlayHapticPulse()` from the `OnWeaponTriggerFired` callback. The notification bus fires on the same hardware edge that triggers auto-recoil, allowing gameplay to react with varied intensity pulses (different weapon types, ammo states, etc.). Auto-recoil's own pulse is issued before the notification dispatches, so a handler that calls `PlayHapticPulse` from `OnWeaponTriggerFired` fires afterward and wins the shared transient-pulse slot, overriding the default kick for that shot.
 
 **Script names for auto-recoil and pulse:**
 - Trigger enum: `DualSenseTrigger_L2`, `DualSenseTrigger_R2`, `DualSenseTrigger_Both`
@@ -86,9 +86,20 @@ DualSenseHapticPulseRequestBus.Event.SetAutoRecoil(
 
 -- Implement OnWeaponTriggerFired to send per-shot variable kicks
 local MyWeaponComponent = {}
+
+function MyWeaponComponent:OnActivate()
+    local deviceId = DualSense_GetGamepadDeviceId(0)
+    self.fireHandler = DualSenseTriggerNotificationBus.Connect(self, deviceId)
+end
+
+function MyWeaponComponent:OnDeactivate()
+    self.fireHandler:Disconnect()
+end
+
 function MyWeaponComponent:OnWeaponTriggerFired(trigger)
     -- vary intensity based on ammo type, recoil pattern, etc
     local intensity = 0.8
+    local deviceId = DualSense_GetGamepadDeviceId(0)
     DualSenseHapticPulseRequestBus.Event.PlayHapticPulse(
         deviceId, intensity, intensity, 0.7)
 end

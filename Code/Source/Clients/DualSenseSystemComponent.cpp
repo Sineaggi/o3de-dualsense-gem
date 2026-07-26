@@ -319,7 +319,7 @@ namespace DualSense
 
         static void dualsense_fire_demo(const AZ::ConsoleCommandContainer& arguments)
         {
-            if (arguments.empty() || arguments.size() > 2)
+            if (arguments.size() > 2)
             {
                 AZLOG_INFO("Usage: dualsense_fire_demo [l2|r2|both] [slot]");
                 return;
@@ -381,7 +381,7 @@ namespace DualSense
                 0.9f,
                 0.7f);
 
-            AZLOG_INFO("DualSense: fire demo activated for %s trigger (slot %u) — pull the trigger!", triggerStr.c_str(), slot);
+            AZLOG_INFO("DualSense: fire demo activated for %s trigger (slot %u) -- pull the trigger!", triggerStr.c_str(), slot);
         }
         AZ_CONSOLEFREEFUNC(dualsense_fire_demo, AZ::ConsoleFunctorFlags::DontReplicate,
             "Activate demo fire feel (weapon effect + auto-recoil): dualsense_fire_demo [l2|r2|both] [slot]");

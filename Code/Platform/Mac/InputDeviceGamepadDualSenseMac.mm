@@ -82,8 +82,8 @@ namespace DualSense
         // that has already gone away (dead-controller hardening, same rationale as
         // DualSenseHapticsMac).
         ClearTriggerEffects();
-        DualSenseTriggerEffectRequestBus::Handler::BusDisconnect();
         DualSenseHapticPulseRequestBus::Handler::BusDisconnect();
+        DualSenseTriggerEffectRequestBus::Handler::BusDisconnect();
 
         if (m_wasConnected)
         {
@@ -352,20 +352,19 @@ namespace DualSense
 
             if (fireEdge)
             {
-                DualSenseTriggerNotificationBus::Event(
-                    AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()),
-                    &DualSenseTriggerNotifications::OnWeaponTriggerFired,
-                    trigger);
-
                 // `config` is a reference to m_leftAutoRecoil/m_rightAutoRecoil (see the call
-                // sites in TickInputDevice), and AZ::EBus::Event dispatches synchronously to
-                // every handler before returning -- so if a handler's OnWeaponTriggerFired
-                // above calls back into SetAutoRecoil for this same trigger, this read sees the
-                // just-updated config, not the value that was live when the edge was detected.
-                // That is intentional, not an accident: it lets a gameplay handler retune (or
-                // disable) auto-recoil in direct response to its own fire-edge notification and
-                // have that decision apply starting with this same edge's pulse, rather than
-                // being deferred to the next one.
+                // sites in TickInputDevice). This read happens before the notification below
+                // is dispatched, so it always sees the config that was live when the edge was
+                // detected -- there is no same-edge TOCTOU window here. If a handler's
+                // OnWeaponTriggerFired below calls back into SetAutoRecoil for this same
+                // trigger, that change is deferred to the *next* fire edge, not applied
+                // retroactively to this one.
+                //
+                // Firing the auto-recoil pulse first (before the notification) is also what
+                // makes the override in PlayHapticPulse's rolling slot work as documented in
+                // the README: a handler that calls PlayHapticPulse from its own
+                // OnWeaponTriggerFired runs after this pulse has already been issued, so the
+                // handler's pulse is the one that lands in the slot and reaches hardware.
                 if (config.m_enabled && m_haptics)
                 {
                     // Bias the transient pulse to the side of the trigger that fired: the
@@ -377,6 +376,11 @@ namespace DualSense
                         isLeft ? 0.0f : config.m_intensity,
                         config.m_sharpness);
                 }
+
+                DualSenseTriggerNotificationBus::Event(
+                    AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()),
+                    &DualSenseTriggerNotifications::OnWeaponTriggerFired,
+                    trigger);
             }
         }
     }

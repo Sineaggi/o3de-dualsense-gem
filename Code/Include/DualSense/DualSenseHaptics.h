@@ -20,7 +20,9 @@ namespace DualSense
 
         //! One sharp transient kick. Intensities/sharpness normalized [0,1]; 0 intensity = skip that side.
         virtual void PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness) = 0;
-        //! Enable/disable hardware-synchronized auto-recoil for a trigger's Weapon-mode fire edge.
+        //! Enable/disable hardware-synchronized auto-recoil for a trigger's Weapon-mode fire
+        //! edge. Trigger::Both configures both triggers with the same enabled/intensity/
+        //! sharpness values in one call.
         virtual void SetAutoRecoil(Trigger trigger, bool enabled, float intensity, float sharpness) = 0;
         virtual ~DualSenseHapticPulseRequests() = default;
     };
