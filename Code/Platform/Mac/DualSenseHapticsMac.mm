@@ -32,7 +32,10 @@ namespace DualSense
                            error.localizedDescription.UTF8String);
                 return nullptr;
             }
-            engine.resetHandler = ^{ [engine startAndReturnError:nil]; };
+            // __block under MRC is not retained by the block copy — breaks the
+            // engine<->resetHandler retain cycle; engine outlives its handler.
+            __block CHHapticEngine* weakEngine = engine;
+            engine.resetHandler = ^{ [weakEngine startAndReturnError:nil]; };
 
             // `engine` is autoreleased (createEngineWithLocality: does not return an
             // owned reference). Take ownership for the lifetime of the opaque pointer.
@@ -127,6 +130,11 @@ namespace DualSense
                 {
                     CHHapticEngine* engine = (__bridge CHHapticEngine*)*engineSlot;
                     [engine stopWithCompletionHandler:nil];
+                    // resetHandler is declared nonnull by the SDK (NS_ASSUME_NONNULL region
+                    // in CHHapticEngine.h), so it can't be set to nil under -Werror -Wnonnull;
+                    // a no-op block achieves the same goal (drop the reference to `weakEngine`
+                    // so a post-release reset can never touch a dangling pointer).
+                    engine.resetHandler = ^{};
                     CFRelease(*engineSlot); // balances the CFRetain in CreateStartedEngine
                     *engineSlot = nullptr;
                 }
