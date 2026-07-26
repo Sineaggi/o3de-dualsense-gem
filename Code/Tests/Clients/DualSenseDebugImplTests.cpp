@@ -1,4 +1,5 @@
 #include <AzCore/UnitTest/TestTypes.h>
+#include <AzTest/AzTest.h>
 #include <AzFramework/Input/Devices/Gamepad/InputDeviceGamepad.h>
 #include <AzFramework/Input/Buses/Requests/InputHapticFeedbackRequestBus.h>
 #include <Clients/DualSenseDebugGamepadImpl.h>
@@ -6,12 +7,20 @@
 
 namespace DualSenseTests
 {
-    // Pre-initialize the static button map at module load time to avoid
-    // leak detection during the first test
-    namespace
+    //! Global test environment to warm up the button map after allocators are initialized.
+    //! This ensures the one-time allocation of the static map happens after AZ::AllocatorInstance
+    //! is guaranteed to exist, and outside the scope of any LeakDetectionFixture.
+    class DualSenseTestEnvironment : public ::testing::Environment
     {
-        const auto& PreInitButtonMap = [] { return DualSense::GetDualSenseDigitalButtonMap(); }();
-    } // namespace
+    public:
+        void SetUp() override
+        {
+            // Access the button map once to initialize the static unordered_map.
+            // This happens during gtest environment setup, after AZ's unit test hook
+            // has created allocators, and before any fixture starts tracking allocations.
+            DualSense::GetDualSenseDigitalButtonMap();
+        }
+    };
 
     using DualSenseDebugFixture = UnitTest::LeakDetectionFixture;
 
@@ -57,4 +66,11 @@ namespace DualSenseTests
         gamepad.TickInputDevice();
         gamepad.TickInputDevice();
     }
+
+    // Register the global environment
+    [[maybe_unused]] static int DualSenseTestEnvironmentRegistration = []()
+    {
+        ::testing::AddGlobalTestEnvironment(new DualSenseTestEnvironment());
+        return 0;
+    }();
 } // namespace DualSenseTests
