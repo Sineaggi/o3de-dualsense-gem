@@ -32,7 +32,7 @@ With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
 - [ ] `dualsense_rumble 0 1` -> strong vibration concentrated on the right grip
 - [ ] `dualsense_rumble 0 0` -> silence
 - [ ] `dualsense_rumble 0.2 0.2` -> clearly weaker than `dualsense_rumble 1 1`
-- [ ] Disconnect mid-rumble -> no crash, clean restore logs
+- [ ] Disconnect mid-rumble -> no crash, clean restore logs (FAILED 2026-07-26: NSException from dead CHHapticEngine + off-main notification delivery — fixed, re-verify)
 
 ## Phase 1 — lightbar
 

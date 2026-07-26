@@ -26,10 +26,24 @@ namespace DualSense
                 return nullptr;
             }
             NSError* error = nil;
-            if (![engine startAndReturnError:&error])
+            BOOL started = NO;
+            @try
+            {
+                // Symmetry with UpdateSide/the destructor below: a dead engine (e.g. the
+                // controller disconnecting during handshake) can make CoreHaptics throw an
+                // NSException here instead of only populating `error`.
+                started = [engine startAndReturnError:&error];
+            }
+            @catch (NSException* exception)
+            {
+                AZLOG_DEBUG("DualSense: haptic engine startAndReturnError: threw, ignoring: %s",
+                            exception.reason ? exception.reason.UTF8String : "unknown");
+                started = NO;
+            }
+            if (!started)
             {
                 AZLOG_WARN("DualSense: haptic engine start failed: %s",
-                           error.localizedDescription.UTF8String);
+                           error ? error.localizedDescription.UTF8String : "unknown");
                 return nullptr;
             }
             // __block under MRC is not retained by the block copy — breaks the
@@ -57,7 +71,22 @@ namespace DualSense
             if (*playerSlot)
             {
                 id<CHHapticPatternPlayer> old = (__bridge id<CHHapticPatternPlayer>)*playerSlot;
-                [old stopAtTime:0 error:nil];
+                @try
+                {
+                    // A dead engine (the controller unplugged mid-rumble) makes
+                    // -[PatternPlayer stopAtTime:error:] throw an NSException instead of only
+                    // returning an NSError; uncaught, it unwinds through this C++ frame into
+                    // std::terminate. This is the exact crash from hardware forensics.
+                    [old stopAtTime:0 error:nil];
+                }
+                @catch (NSException* exception)
+                {
+                    AZLOG_DEBUG("DualSense: stopAtTime: threw on a dead haptic engine, ignoring: %s",
+                                exception.reason ? exception.reason.UTF8String : "unknown");
+                }
+                // `old` is a __bridge (non-owning) reference into *playerSlot; the CFRelease
+                // below is the only owning release for this player and must run whether or not
+                // stop threw, so it sits after the @try/@catch, unconditional.
                 CFRelease(*playerSlot); // balances the CFRetain taken when this player was stored
                 *playerSlot = nullptr;
             }
@@ -91,10 +120,36 @@ namespace DualSense
                            error.localizedDescription.UTF8String);
                 return;
             }
-            id<CHHapticPatternPlayer> player = [engine createPlayerWithPattern:pattern error:&error];
-            // `pattern` is no longer needed once the player has been created from it.
+            id<CHHapticPatternPlayer> player = nil;
+            BOOL playerStarted = NO;
+            @try
+            {
+                // A dead engine (the controller unplugged) can make
+                // createPlayerWithPattern:error: and/or startAtTime:error: throw an
+                // NSException instead of only populating `error`. `player` returned here is
+                // autoreleased (not an owned reference, see the CFRetain comment below), so a
+                // throw before or after it's assigned leaves nothing extra to release: on
+                // catch this is simply treated as a failed start, and the player is never
+                // stored.
+                player = [engine createPlayerWithPattern:pattern error:&error];
+                if (player)
+                {
+                    playerStarted = [player startAtTime:0 error:&error];
+                }
+            }
+            @catch (NSException* exception)
+            {
+                AZLOG_DEBUG("DualSense: haptic player create/start threw on a dead engine, ignoring: %s",
+                            exception.reason ? exception.reason.UTF8String : "unknown");
+                player = nil;
+                playerStarted = NO;
+            }
+            // `pattern` is only referenced inside the @try body (createPlayerWithPattern: does
+            // not retain it beyond the call); release our +1 unconditionally now that the call
+            // has either returned normally or been caught, so it happens on every path exactly
+            // once.
             [pattern release];
-            if (!player || ![player startAtTime:0 error:&error])
+            if (!player || !playerStarted)
             {
                 AZLOG_WARN("DualSense: haptic player start failed: %s",
                            error ? error.localizedDescription.UTF8String : "unknown");
@@ -129,12 +184,30 @@ namespace DualSense
                 if (*engineSlot)
                 {
                     CHHapticEngine* engine = (__bridge CHHapticEngine*)*engineSlot;
-                    [engine stopWithCompletionHandler:nil];
-                    // resetHandler is declared nonnull by the SDK (NS_ASSUME_NONNULL region
-                    // in CHHapticEngine.h), so it can't be set to nil under -Werror -Wnonnull;
-                    // a no-op block achieves the same goal (drop the reference to `weakEngine`
-                    // so a post-release reset can never touch a dangling pointer).
-                    engine.resetHandler = ^{};
+                    @try
+                    {
+                        // A dead engine (the controller already gone) can throw from
+                        // stopWithCompletionHandler: or from the resetHandler property setter
+                        // instead of failing silently. An exception must NEVER escape a
+                        // destructor -- that is exactly what aborted the Editor in the field
+                        // (see the stopAtTime: crash forensics above) -- so every remaining
+                        // engine call here is guarded.
+                        [engine stopWithCompletionHandler:nil];
+                        // resetHandler is declared nonnull by the SDK (NS_ASSUME_NONNULL region
+                        // in CHHapticEngine.h), so it can't be set to nil under -Werror -Wnonnull;
+                        // a no-op block achieves the same goal (drop the reference to `weakEngine`
+                        // so a post-release reset can never touch a dangling pointer).
+                        engine.resetHandler = ^{};
+                    }
+                    @catch (NSException* exception)
+                    {
+                        AZLOG_DEBUG("DualSense: haptic engine teardown threw on a dead engine, ignoring: %s",
+                                    exception.reason ? exception.reason.UTF8String : "unknown");
+                    }
+                    // CFRelease must run whether or not the calls above threw: it balances the
+                    // CFRetain taken in CreateStartedEngine and is the only thing that actually
+                    // frees the engine, so it sits after the @try/@catch, unconditional --
+                    // skipping it on an exception would leak the engine.
                     CFRelease(*engineSlot); // balances the CFRetain in CreateStartedEngine
                     *engineSlot = nullptr;
                 }

@@ -7,6 +7,8 @@
 
 #import <GameController/GameController.h>
 
+#include <dispatch/dispatch.h>
+
 #include <memory>
 
 namespace DualSense
@@ -20,13 +22,25 @@ namespace DualSense
         {
             if (@available(macOS 11.3, *))
             {
-                // Both blocks below run on the main queue and copy-capture m_alive (a
-                // std::shared_ptr<bool>, a C++ object, which MRC/non-ARC blocks copy-capture
-                // correctly by value/refcount just like ARC does). A block that is already
-                // enqueued on the run loop can still execute after this object's destructor
-                // has run and freed `this` -- removeObserver only prevents *future*
-                // notifications from being posted, it does not cancel a block already queued
-                // for this pass of the run loop. The shared_ptr<bool> flag lets a
+                // Both blocks below register with queue:[NSOperationQueue mainQueue], but that
+                // queue: parameter is NOT trusted to guarantee main-thread delivery. Hardware
+                // forensics (a real DualSense unplugged mid-rumble, macOS 26) proved
+                // GCControllerDidDisconnectNotification can be delivered out *synchronously* on
+                // GameController's internal GCDeviceSession thread -- macOS ran it via a
+                // CFNotificationCenter callout with no queue hop at all. Our entire restore path
+                // (slot tracker, EBus SetCustomImplementation, device pimpl destruction) is not
+                // safe to run off the main thread, so each block below does nothing but retain
+                // the controller and dispatch_async to dispatch_get_main_queue() -- the
+                // dispatch_async hop, not the queue: parameter, is what actually guarantees
+                // main-thread execution. The alive-check and the real work happen inside the
+                // dispatched block, evaluated *after* the hop: checking `*alive` before the hop
+                // would be useless, since teardown can happen during the async gap between the
+                // notification firing and the dispatched block running.
+                //
+                // A block that is already queued (on the run loop, or via dispatch_async) can
+                // still execute after this object's destructor has run and freed `this` --
+                // removeObserver only prevents *future* notifications from being posted, it does
+                // not cancel work already queued. The shared_ptr<bool> flag lets a
                 // late-executing block detect that `this` is gone and bail out instead of
                 // touching freed memory.
                 NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
@@ -35,16 +49,30 @@ namespace DualSense
                                                         object:nil
                                                          queue:[NSOperationQueue mainQueue]
                                                     usingBlock:^(NSNotification* note) {
-                                                        if (!*aliveForConnect) { return; }
-                                                        this->OnControllerConnected((GCController*)note.object);
+                                                        GCController* controller = (GCController*)note.object;
+                                                        [controller retain]; // keep alive across the async hop (MRC)
+                                                        dispatch_async(dispatch_get_main_queue(), ^{
+                                                            if (*aliveForConnect) // alive-check evaluated ON MAIN, after the hop
+                                                            {
+                                                                this->OnControllerConnected(controller);
+                                                            }
+                                                            [controller release];
+                                                        });
                                                     }];
                 std::shared_ptr<bool> aliveForDisconnect = m_alive;
                 m_disconnectObserver = [center addObserverForName:GCControllerDidDisconnectNotification
                                                            object:nil
                                                             queue:[NSOperationQueue mainQueue]
                                                        usingBlock:^(NSNotification* note) {
-                                                           if (!*aliveForDisconnect) { return; }
-                                                           this->OnControllerDisconnected((GCController*)note.object);
+                                                           GCController* controller = (GCController*)note.object;
+                                                           [controller retain]; // keep alive across the async hop (MRC)
+                                                           dispatch_async(dispatch_get_main_queue(), ^{
+                                                               if (*aliveForDisconnect) // alive-check evaluated ON MAIN, after the hop
+                                                               {
+                                                                   this->OnControllerDisconnected(controller);
+                                                               }
+                                                               [controller release];
+                                                           });
                                                        }];
                 for (GCController* controller in GCController.controllers)
                 {
