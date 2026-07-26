@@ -3,6 +3,7 @@
 #include <DualSense/DualSenseTypeIds.h>
 
 #include <AzCore/RTTI/TypeInfoSimple.h>
+#include <AzCore/RTTI/BehaviorContext.h>
 #include <AzCore/std/containers/array.h>
 #include <AzCore/EBus/EBus.h>
 #include <AzCore/Serialization/SerializeContext.h>
@@ -74,6 +75,19 @@ namespace DualSense
         }
     };
 
+    class DualSenseTriggerEffectRequests : public AZ::EBusTraits
+    {
+    public:
+        static const AZ::EBusHandlerPolicy HandlerPolicy = AZ::EBusHandlerPolicy::Single;
+        static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ById;
+        using BusIdType = AzFramework::InputDeviceId;
+        virtual ~DualSenseTriggerEffectRequests() = default;
+        virtual void SetTriggerEffect(Trigger trigger, const TriggerEffect& effect) = 0;
+        virtual void ClearTriggerEffects() = 0;
+    };
+
+    using DualSenseTriggerEffectRequestBus = AZ::EBus<DualSenseTriggerEffectRequests>;
+
     inline void TriggerEffect::Reflect(AZ::ReflectContext* context)
     {
         if (auto serializeContext = azrtti_cast<AZ::SerializeContext*>(context))
@@ -89,19 +103,64 @@ namespace DualSense
                 ->Field("m_positionalValues", &TriggerEffect::m_positionalValues)
                 ;
         }
+
+        if (auto behaviorContext = azrtti_cast<AZ::BehaviorContext*>(context))
+        {
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(Trigger::L2)>("DualSenseTrigger_L2")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(Trigger::R2)>("DualSenseTrigger_R2")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(Trigger::Both)>("DualSenseTrigger_Both")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Off)>("DualSenseTriggerEffectMode_Off")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Feedback)>("DualSenseTriggerEffectMode_Feedback")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Weapon)>("DualSenseTriggerEffectMode_Weapon")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::Vibration)>("DualSenseTriggerEffectMode_Vibration")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext
+                ->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::MultiPositionFeedback)>(
+                    "DualSenseTriggerEffectMode_MultiPositionFeedback")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext
+                ->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::MultiPositionVibration)>(
+                    "DualSenseTriggerEffectMode_MultiPositionVibration")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+            behaviorContext->EnumProperty<static_cast<AZ::u8>(TriggerEffectMode::SlopeFeedback)>("DualSenseTriggerEffectMode_SlopeFeedback")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense");
+
+            behaviorContext->Class<TriggerEffect>("DualSenseTriggerEffect")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense")
+                ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)
+                ->Attribute(AZ::Script::Attributes::Storage, AZ::Script::Attributes::StorageType::Value)
+                ->Constructor()
+                ->Property("mode", BehaviorValueProperty(&TriggerEffect::m_mode))
+                ->Property("startPosition", BehaviorValueProperty(&TriggerEffect::m_startPosition))
+                ->Property("endPosition", BehaviorValueProperty(&TriggerEffect::m_endPosition))
+                ->Property("strength", BehaviorValueProperty(&TriggerEffect::m_strength))
+                ->Property("endStrength", BehaviorValueProperty(&TriggerEffect::m_endStrength))
+                ->Property("frequency", BehaviorValueProperty(&TriggerEffect::m_frequency))
+                ->Property("positionalValues", BehaviorValueProperty(&TriggerEffect::m_positionalValues))
+                ;
+
+            AZ::BehaviorParameterOverrides setTriggerEffectTriggerParam = { "Trigger", "Which trigger: L2, R2, or Both" };
+            AZ::BehaviorParameterOverrides setTriggerEffectEffectParam = { "Effect", "The trigger effect to apply" };
+
+            behaviorContext->EBus<DualSenseTriggerEffectRequestBus>("DualSenseTriggerEffectRequestBus")
+                ->Attribute(AZ::Script::Attributes::Module, "dualsense")
+                ->Attribute(AZ::Script::Attributes::Category, "DualSense")
+                ->Attribute(AZ::Script::Attributes::Scope, AZ::Script::Attributes::ScopeFlags::Common)
+                ->Event(
+                    "SetTriggerEffect",
+                    &DualSenseTriggerEffectRequestBus::Events::SetTriggerEffect,
+                    { setTriggerEffectTriggerParam, setTriggerEffectEffectParam })
+                ->Event("ClearTriggerEffects", &DualSenseTriggerEffectRequestBus::Events::ClearTriggerEffects)
+                ;
+        }
     }
-
-    class DualSenseTriggerEffectRequests : public AZ::EBusTraits
-    {
-    public:
-        static const AZ::EBusHandlerPolicy HandlerPolicy = AZ::EBusHandlerPolicy::Single;
-        static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ById;
-        using BusIdType = AzFramework::InputDeviceId;
-        virtual ~DualSenseTriggerEffectRequests() = default;
-        virtual void SetTriggerEffect(Trigger trigger, const TriggerEffect& effect) = 0;
-        virtual void ClearTriggerEffects() = 0;
-    };
-
-    using DualSenseTriggerEffectRequestBus = AZ::EBus<DualSenseTriggerEffectRequests>;
 
 } // namespace DualSense
