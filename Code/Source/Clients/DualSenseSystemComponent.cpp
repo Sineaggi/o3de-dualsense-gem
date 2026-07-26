@@ -1,9 +1,15 @@
 
 #include "DualSenseSystemComponent.h"
 
+#include "DualSenseDebugGamepadImpl.h"
+
 #include <DualSense/DualSenseTypeIds.h>
 
+#include <AzCore/Console/IConsole.h>
+#include <AzCore/Console/ILogger.h>
+#include <AzCore/Interface/Interface.h>
 #include <AzCore/Serialization/SerializeContext.h>
+#include <AzFramework/Input/Buses/Requests/InputDeviceRequestBus.h>
 
 namespace DualSense
 {
@@ -34,8 +40,13 @@ namespace DualSense
     {
     }
 
-    void DualSenseSystemComponent::GetDependentServices([[maybe_unused]] AZ::ComponentDescriptor::DependencyArrayType& dependent)
+    void DualSenseSystemComponent::GetDependentServices(AZ::ComponentDescriptor::DependencyArrayType& dependent)
     {
+        // Soft dependencies: order after the input system when present, but do not
+        // hard-require it (this component also activates in AssetProcessor/AssetBuilder
+        // via the Builders variant, where no input system exists).
+        dependent.push_back(AZ_CRC_CE("InputSystemService"));
+        dependent.push_back(AZ_CRC_CE("NativeUIInputSystemService"));
     }
 
     DualSenseSystemComponent::DualSenseSystemComponent()
@@ -73,5 +84,59 @@ namespace DualSense
     void DualSenseSystemComponent::OnTick([[maybe_unused]] float deltaTime, [[maybe_unused]] AZ::ScriptTimePoint time)
     {
     }
+
+    void DualSenseSystemComponent::SwapSlotToFactory(
+        AZ::u32 slotIndex, AzFramework::InputDeviceGamepad::ImplementationFactory* factory)
+    {
+        using SwapBus = AzFramework::InputDeviceImplementationRequest<AzFramework::InputDeviceGamepad>;
+        SwapBus::Bus::Event(
+            AzFramework::InputDeviceGamepad::IdForIndexN(slotIndex),
+            &SwapBus::SetCustomImplementation,
+            factory);
+    }
+
+    void DualSenseSystemComponent::RestoreSlotToPlatformDefault(AZ::u32 slotIndex)
+    {
+        auto* platformFactory =
+            AZ::Interface<AzFramework::InputDeviceGamepad::ImplementationFactory>::Get();
+        if (platformFactory == nullptr)
+        {
+            AZLOG_WARN("DualSense: no platform gamepad factory registered; restore for slot %u skipped", slotIndex);
+            return;
+        }
+        SwapSlotToFactory(slotIndex, platformFactory);
+    }
+
+    namespace DebugCommands
+    {
+        static DualSenseDebugGamepadImplFactory s_debugFactory;
+
+        static AZ::u32 SlotFromArgs(const AZ::ConsoleCommandContainer& arguments)
+        {
+            if (!arguments.empty())
+            {
+                return static_cast<AZ::u32>(strtoul(AZStd::string(arguments.front()).c_str(), nullptr, 10));
+            }
+            return 0;
+        }
+
+        static void dualsense_debug_swap(const AZ::ConsoleCommandContainer& arguments)
+        {
+            const AZ::u32 slot = SlotFromArgs(arguments);
+            AZLOG_INFO("DualSense: swapping gamepad slot %u to debug implementation", slot);
+            DualSenseSystemComponent::SwapSlotToFactory(slot, &s_debugFactory);
+        }
+        AZ_CONSOLEFREEFUNC(dualsense_debug_swap, AZ::ConsoleFunctorFlags::DontReplicate,
+            "Swap a gamepad slot (arg, default 0) to the DualSense debug implementation");
+
+        static void dualsense_debug_restore(const AZ::ConsoleCommandContainer& arguments)
+        {
+            const AZ::u32 slot = SlotFromArgs(arguments);
+            AZLOG_INFO("DualSense: restoring gamepad slot %u to platform default", slot);
+            DualSenseSystemComponent::RestoreSlotToPlatformDefault(slot);
+        }
+        AZ_CONSOLEFREEFUNC(dualsense_debug_restore, AZ::ConsoleFunctorFlags::DontReplicate,
+            "Restore a gamepad slot (arg, default 0) to the platform-default implementation");
+    } // namespace DebugCommands
 
 } // namespace DualSense
