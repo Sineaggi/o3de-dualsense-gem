@@ -8,9 +8,11 @@
 #include <AzCore/Console/IConsole.h>
 #include <AzCore/Console/ILogger.h>
 #include <AzCore/Interface/Interface.h>
+#include <AzCore/Math/Color.h>
 #include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Input/Buses/Requests/InputDeviceRequestBus.h>
 #include <AzFramework/Input/Buses/Requests/InputHapticFeedbackRequestBus.h>
+#include <AzFramework/Input/Buses/Requests/InputLightBarRequestBus.h>
 
 namespace DualSense
 {
@@ -165,6 +167,26 @@ namespace DualSense
         }
         AZ_CONSOLEFREEFUNC(dualsense_rumble, AZ::ConsoleFunctorFlags::DontReplicate,
             "Send SetVibration to a gamepad slot: dualsense_rumble <left 0-1> <right 0-1> [slot]");
+
+        static void dualsense_lightbar(const AZ::ConsoleCommandContainer& arguments)
+        {
+            if (arguments.size() < 3)
+            {
+                AZLOG_INFO("Usage: dualsense_lightbar <r 0-1> <g 0-1> <b 0-1> [slot]");
+                return;
+            }
+            const float r = static_cast<float>(atof(AZStd::string(arguments[0]).c_str()));
+            const float g = static_cast<float>(atof(AZStd::string(arguments[1]).c_str()));
+            const float b = static_cast<float>(atof(AZStd::string(arguments[2]).c_str()));
+            const AZ::u32 slot = arguments.size() >= 4
+                ? static_cast<AZ::u32>(strtoul(AZStd::string(arguments[3]).c_str(), nullptr, 10)) : 0;
+            AzFramework::InputLightBarRequestBus::Event(
+                AzFramework::InputDeviceGamepad::IdForIndexN(slot),
+                &AzFramework::InputLightBarRequests::SetLightBarColor,
+                AZ::Color(r, g, b, 1.0f));
+        }
+        AZ_CONSOLEFREEFUNC(dualsense_lightbar, AZ::ConsoleFunctorFlags::DontReplicate,
+            "Set a gamepad slot's light bar color: dualsense_lightbar <r> <g> <b> [slot]");
     } // namespace DebugCommands
 
 } // namespace DualSense

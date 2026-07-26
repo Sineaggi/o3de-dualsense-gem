@@ -32,3 +32,14 @@ With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
 - [ ] `dualsense_rumble 0 0` -> silence
 - [ ] `dualsense_rumble 0.2 0.2` -> clearly weaker than `dualsense_rumble 1 1`
 - [ ] Disconnect mid-rumble -> no crash, clean restore logs
+
+## Phase 1 — lightbar
+
+With a DualSense connected via the testbed Editor. Try BOTH USB and Bluetooth.
+
+- [ ] `dualsense_lightbar 1 0 0` -> red
+- [ ] `dualsense_lightbar 0 1 0` -> green
+- [ ] `dualsense_lightbar 0 0 1` -> blue
+- [ ] `dualsense_lightbar 1 1 1` -> white
+- [ ] Disconnect mid-color-change -> no crash, clean restore logs
+- [ ] Reconnect -> lightbar state sane

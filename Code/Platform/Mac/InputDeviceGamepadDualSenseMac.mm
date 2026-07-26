@@ -4,6 +4,7 @@
 #include "DualSenseHapticsMac.h"
 
 #include <AzCore/Console/ILogger.h>
+#include <AzCore/Math/Color.h>
 
 #import <GameController/GameController.h>
 
@@ -66,14 +67,30 @@ namespace DualSense
         }
     }
 
-    void InputDeviceGamepadDualSenseMac::SetLightBarColor(const AZ::Color&)
+    void InputDeviceGamepadDualSenseMac::SetLightBarColor(const AZ::Color& color)
     {
-        // Implemented in the lightbar task (GCDeviceLight).
+        if (@available(macOS 11.3, *))
+        {
+            GCController* controller = (__bridge GCController*)m_controller;
+            if (controller.light)
+            {
+                // Create a GCColor with the provided color values.
+                // In MRC (non-ARC) mode, the alloc'd GCColor is retained by the property
+                // assignment, so we must autorelease it to prevent a leak.
+                GCColor* gcColor = [[GCColor alloc] initWithRed:color.GetR()
+                                                          green:color.GetG()
+                                                           blue:color.GetB()];
+                controller.light.color = gcColor;
+                [gcColor autorelease];
+            }
+        }
     }
 
     void InputDeviceGamepadDualSenseMac::ResetLightBarColor()
     {
-        // Implemented in the lightbar task (GCDeviceLight).
+        // The DualSense default when attached to a Mac is a dim blue-ish white;
+        // there is no OS "reset" API, so approximate the default.
+        SetLightBarColor(AZ::Color(0.0f, 0.25f, 1.0f, 1.0f));
     }
 
     void InputDeviceGamepadDualSenseMac::TickInputDevice()

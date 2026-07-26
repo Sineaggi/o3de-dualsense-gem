@@ -3,8 +3,10 @@
 Sony DualSense (PS5) controller support for O3DE: adaptive trigger force-feedback
 effects, haptic feedback, light bar, player LEDs, and (planned) extended inputs.
 
-Status: Phase 0 (swap architecture proven). See `docs/superpowers/specs/` for the
-design and `docs/superpowers/plans/` for the implementation plan.
+Status: Phase 1 complete — on macOS (11.3+) a DualSense works as the standard
+gamepad device with rumble (CoreHaptics) and light bar. Next: trigger-effect API
+(phase 2). Console commands: `dualsense_rumble`, `dualsense_lightbar`,
+`dualsense_debug_swap`, `dualsense_debug_restore`. Hardware verification pending — see docs/hardware-smoke.md.
 
 ## Setup
 
@@ -23,5 +25,7 @@ Engine-only builds require `-DO3DE_EXTERNAL_SUBDIRS` because manifest-registered
 
 ## Debug console commands
 
+- `dualsense_rumble <left 0-1> <right 0-1> [slot]` — send vibration to a gamepad slot
+- `dualsense_lightbar <r 0-1> <g 0-1> <b 0-1> [slot]` — set light bar color for a gamepad slot
 - `dualsense_debug_swap [slot]` — swap a gamepad slot to the debug implementation
 - `dualsense_debug_restore [slot]` — restore the platform-default implementation
