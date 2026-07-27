@@ -224,6 +224,10 @@ console commands as the Phase 2.6 items above, selecting the SDL backend at the 
       simultaneously connected: confirm no input/effect interference between the two (this is the
       actual "two writers" scenario — SDL and GameController.framework both live in-process). Record
       any surprises.
+- [ ] Single pad with `dualsense_backend sdl` active: verify the pad does NOT also feed a stock
+      GameController gamepad slot (no duplicate input on two engine slots — the 2.6 playerIndex
+      forensics predict stock GC impls may re-claim a playerIndex-Unset pad; record what actually
+      happens).
 - [ ] Disconnect pad A (sdl-owned) mid-effect: no crash, "restoring platform default" log, clean
       teardown; reconnect: monitor re-detects and re-takes-over within a tick or two.
 

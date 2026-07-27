@@ -189,7 +189,7 @@ forth mid-session is safe; all gamepad slots are re-claimed when the new backend
 
 **PAL trait** `PAL_TRAIT_DUALSENSE_SDL_BACKEND`:
 - `TRUE` on macOS, Windows, Linux (SDL3 build is available on these platforms).
-- `FALSE` on Android, iOS (SDL3 not linked on these platforms; `dualsense_backend sdl` is a no-op with a warning log).
+- `FALSE` on Android, iOS (the gem module itself is not compiled on these platforms; the cvar and SDL-backend code do not exist at all).
 
 **Compile definition** `DUALSENSE_SDL_BACKEND_ENABLED`: defined when `PAL_TRAIT_DUALSENSE_SDL_BACKEND` is `TRUE`. Guards all SDL-specific source files (`Code/Source/Clients/Sdl/*.cpp`).
 
@@ -203,7 +203,7 @@ forth mid-session is safe; all gamepad slots are re-claimed when the new backend
 
 Both backends can coexist in the same process (GameController.framework and SDL3 managing different physical pads, or the same pad switching ownership at runtime). This allows:
 
-1. **Live A/B comparison** on a single development machine: set one DualSense to `native`, a second to `sdl`, and compare feel/behavior side by side.
+1. **Sequential A/B comparison** on a single pad: switch the `dualsense_backend` cvar between `native` and `sdl` across multiple runs on the same hardware to compare feel/behavior side by side. Alternatively, run two pads concurrently—one via the gem's SDL backend, the second via the stock engine's native GameController.framework—to isolate any cross-writer interference.
 2. **Gradual rollout** or **fallback path**: deploy the SDL backend alongside the native one and use the cvar to switch between them in the field if issues arise, without recompiling or restarting.
 3. **Platform-validation path**: the native backend is macOS-only (GameController.framework); SDL is cross-platform. Validating the same input/effects contract on SDL before rolling out to Linux/Windows reduces platform-specific regressions.
 
