@@ -11,6 +11,7 @@ set(FILES
     Source/Clients/DualSenseSlotTracker.h
     Source/Clients/DualSenseSlotTracker.cpp
     Source/Clients/DualSenseTriggerEffectMapping.cpp
+    Source/Clients/DualSenseDs5Protocol.cpp
     Source/Clients/DualSenseTriggerFireDetector.h
     Source/Clients/DualSenseTriggerFireDetector.cpp
     Source/Clients/DualSenseSdlBackendProbe.h

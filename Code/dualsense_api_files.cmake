@@ -4,5 +4,6 @@ set(FILES
     Include/DualSense/DualSenseTypeIds.h
     Include/DualSense/DualSenseTriggerEffects.h
     Include/DualSense/DualSenseTriggerEffectMapping.h
+    Include/DualSense/DualSenseDs5Protocol.h
     Include/DualSense/DualSenseHaptics.h
 )
