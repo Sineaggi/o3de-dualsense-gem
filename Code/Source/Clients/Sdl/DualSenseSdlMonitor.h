@@ -60,6 +60,14 @@ namespace DualSense
         //! "what we already know about" instead of re-deriving that set from m_slotTracker
         //! (which only exposes lookups, not full enumeration).
         AZStd::vector<SDL_JoystickID> m_trackedIds;
+        //! Ids for which the "all 4 slots occupied" warning has already been logged, so
+        //! per-tick list-diffing (a device with nowhere to go is "newly connected" again on
+        //! every subsequent tick, since it never makes it into m_trackedIds) doesn't re-warn
+        //! every tick for as long as the device stays plugged in with no free slot. Cleared in
+        //! Tick() for any id that drops out of the current enumeration (device unplugged --
+        //! reconnecting later warns again) and in OnJoystickConnected on a successful Assign
+        //! (a slot freed up and this id claimed it).
+        AZStd::vector<SDL_JoystickID> m_slotExhaustionWarnedIds;
     };
 } // namespace DualSense
 

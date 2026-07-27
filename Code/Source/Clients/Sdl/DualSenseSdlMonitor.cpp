@@ -93,18 +93,63 @@ namespace DualSense
         {
             OnJoystickDisconnected(id);
         }
+
+        // Drop any slot-exhaustion warning entries for ids that vanished from the enumeration
+        // entirely (device unplugged while no slot was ever free for it) -- so if/when the same
+        // physical id reappears later, it gets a fresh warning rather than being silently
+        // suppressed forever by a stale entry. (A slot-exhausted id is never added to
+        // m_trackedIds -- see OnJoystickConnected -- so it can't be picked up by the
+        // newlyDisconnected loop above; it needs this separate pass.)
+        for (auto it = m_slotExhaustionWarnedIds.begin(); it != m_slotExhaustionWarnedIds.end();)
+        {
+            if (AZStd::find(current.begin(), current.end(), *it) == current.end())
+            {
+                it = m_slotExhaustionWarnedIds.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
     }
 
     void DualSenseSdlMonitor::OnJoystickConnected(SDL_JoystickID id)
     {
-        // GUID bus-byte trick, logged once per newly-seen connection (not once per tick).
-        DualSenseSdlRuntime::LogTransport(id);
+        // Per-tick list-diffing calls this every tick for as long as `id` isn't in m_trackedIds
+        // -- which, for a slot-exhausted id, is EVERY tick it stays plugged in (it never makes it
+        // into m_trackedIds since no slot was assigned). Gate both the transport log and the
+        // "all slots occupied" warning on "have we already warned about this id" so a long-lived
+        // 5th pad logs each exactly once, not once per tick, until something changes (a slot
+        // frees up, or the device is unplugged -- see Tick()'s cleanup pass for the latter).
+        const bool alreadyWarned =
+            AZStd::find(m_slotExhaustionWarnedIds.begin(), m_slotExhaustionWarnedIds.end(), id) != m_slotExhaustionWarnedIds.end();
+
+        if (!alreadyWarned)
+        {
+            // GUID bus-byte trick, logged once per newly-seen connection attempt (not once per
+            // tick retry).
+            DualSenseSdlRuntime::LogTransport(id);
+        }
 
         const AZ::u32 slot = m_slotTracker.Assign(AsDeviceKey(id), 0);
         if (slot == DualSenseSlotTracker::InvalidSlot)
         {
-            AZLOG_WARN("DualSense (SDL): controller detected but all 4 gamepad slots occupied");
+            if (!alreadyWarned)
+            {
+                AZLOG_WARN("DualSense (SDL): controller detected but all 4 gamepad slots occupied");
+                m_slotExhaustionWarnedIds.push_back(id);
+            }
             return;
+        }
+
+        // A slot is now available for `id` (either it was never warned about, or one freed up
+        // since the last warned tick) -- clear any stale warned-entry so a possible future
+        // re-exhaustion for this same id (e.g. after a disconnect/reconnect this Tick() pass
+        // didn't happen to purge first) starts from a clean slate.
+        if (const auto it = AZStd::find(m_slotExhaustionWarnedIds.begin(), m_slotExhaustionWarnedIds.end(), id);
+            it != m_slotExhaustionWarnedIds.end())
+        {
+            m_slotExhaustionWarnedIds.erase(it);
         }
 
         AZLOG_INFO("DualSense (SDL): controller detected, taking over gamepad slot %u", slot);

@@ -78,6 +78,18 @@ namespace DualSense
         //! constructor's initial call landing on the cvar's own default). Also called once from
         //! the constructor with m_activeStack still at None, which always takes the "bring up"
         //! branch below with nothing to tear down first.
+        //!
+        //! m_activeStack only ever advances to `target` if the corresponding Setup* call actually
+        //! succeeded. SetupNative() cannot fail (its @available branch is the only "inactive"
+        //! outcome, and that's still a successfully-set-up native stack -- just one that watches
+        //! for nothing on macOS < 11.3), so it always leaves m_activeStack at Stack::Native. But
+        //! SetupSdl() can fail (SDL_Init false, or DUALSENSE_SDL_BACKEND_ENABLED undefined) -- on
+        //! failure m_activeStack is left at Stack::None, NOT Stack::Sdl, specifically so that a
+        //! later re-attempt (the operator retyping `dualsense_backend sdl`, or setting it to the
+        //! same string again) does not get short-circuited by the `target == m_activeStack` no-op
+        //! check above (Stack::None can never equal Stack::Sdl). Without this, a single failed
+        //! SDL_Init would strand the gem inert with no way to retry short of first switching to
+        //! `native` and back.
         void ApplyBackendSelection(BackendSelection selection)
         {
             const Stack target = (selection == BackendSelection::Sdl) ? Stack::Sdl : Stack::Native;
@@ -103,37 +115,52 @@ namespace DualSense
             {
             case Stack::Native:
                 SetupNative();
+                m_activeStack = Stack::Native;
                 break;
             case Stack::Sdl:
-                SetupSdl();
+                if (SetupSdl())
+                {
+                    m_activeStack = Stack::Sdl;
+                }
+                else
+                {
+                    AZLOG_WARN("DualSense: dualsense_backend=sdl selection failed; staying inactive "
+                               "(m_activeStack=None) so re-issuing the same cvar value will retry "
+                               "SetupSdl() instead of being treated as a no-op");
+                    // m_activeStack stays Stack::None (set above) -- deliberately NOT Stack::Sdl.
+                }
                 break;
             case Stack::None:
                 break;
             }
-            m_activeStack = target;
         }
 
         //! Brings up the SDL3 joystick-layer backend: activates DualSenseSdlRuntime (lazy
         //! SDL_Init happens here, and ONLY here -- see DualSenseSdlRuntime.h) and constructs the
-        //! monitor. On DUALSENSE_SDL_BACKEND_ENABLED-undefined platforms (SDL3 not linked at
-        //! all), this is a hard compile-time gate: `dualsense_backend sdl` logs a warning and the
-        //! gem stays passive, with zero SDL calls possible even in principle (there is no SDL3
-        //! symbol reachable from this translation unit to call).
-        void SetupSdl()
+        //! monitor. Returns false (with nothing left running) if SDL_Init failed or this build
+        //! wasn't compiled with SDL3 linked -- see ApplyBackendSelection's caller-side handling of
+        //! that return value for why the failure path matters (retry-ability). On
+        //! DUALSENSE_SDL_BACKEND_ENABLED-undefined platforms (SDL3 not linked at all), this is a
+        //! hard compile-time gate: `dualsense_backend sdl` logs a warning and the gem stays
+        //! passive, with zero SDL calls possible even in principle (there is no SDL3 symbol
+        //! reachable from this translation unit to call).
+        bool SetupSdl()
         {
 #if defined(DUALSENSE_SDL_BACKEND_ENABLED)
             if (!m_sdlRuntime.Activate())
             {
                 AZLOG_WARN("DualSense: dualsense_backend=sdl selected but SDL_Init failed; "
                            "DualSense support stays inactive until the backend is reselected");
-                return;
+                return false;
             }
             m_sdlMonitor = AZStd::make_unique<DualSenseSdlMonitor>(m_sdlRuntime);
+            return true;
 #else
             AZLOG_WARN("DualSense: dualsense_backend=sdl selected, but this build was not compiled with "
                        "DUALSENSE_SDL_BACKEND_ENABLED (PAL_TRAIT_DUALSENSE_SDL_BACKEND was FALSE for this "
                        "platform) -- SDL3 is not linked, so no SDL call can be made. DualSense support stays "
                        "inactive under this backend selection.");
+            return false;
 #endif
         }
 
