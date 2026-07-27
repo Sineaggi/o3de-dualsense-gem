@@ -223,13 +223,15 @@ Bluetooth:
   triggers a prompt. macOS may prompt the user the first time SDL actually attempts to open a matching
   HID device, or it may silently deny with no prompt at all depending on prior history for this binary —
   don't assume a prompt will appear. If the console logs `DualSense (SDL): Input Monitoring permission
-  has not been granted...`, grant it manually under **System Settings > Privacy & Security > Input
-  Monitoring** (add/enable the Editor or the built app), then relaunch.
+  has not been granted...`, grant it manually (add/enable the Editor or the built app), then relaunch:
+  **System Settings > Privacy & Security > Input Monitoring** on macOS 13 (Ventura) and later, or
+  **System Preferences > Security & Privacy > Privacy > Input Monitoring** on macOS 11–12 (this gem's
+  floor is 11.3).
 - **TCC rebinds on rebuild.** macOS's TCC grants are tied to the binary's code signature/identity, not
   just its path. A dev (ad-hoc-signed, frequently-relinked) Editor or launcher binary can silently lose
-  its Input Monitoring grant after a rebuild, even though nothing in System Settings changed — if a
-  previously-working BT session suddenly logs the not-granted warning after a rebuild, re-grant the
-  permission (may require removing and re-adding the entry, not just re-checking it) rather than
+  its Input Monitoring grant after a rebuild, even though nothing in the privacy settings above changed
+  — if a previously-working BT session suddenly logs the not-granted warning after a rebuild, re-grant
+  the permission (may require removing and re-adding the entry, not just re-checking it) rather than
   assuming a code regression.
 - **Pairing.** Put the DualSense into Bluetooth pairing mode by holding **PS + Create** until the light
   bar starts flashing rapidly, then pair it from macOS's Bluetooth settings. **Unplug the USB cable**

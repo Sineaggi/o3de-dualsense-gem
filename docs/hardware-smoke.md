@@ -234,11 +234,13 @@ console commands as the Phase 2.6 items above, selecting the SDL backend at the 
 **Idle-stability and Bluetooth (if pairing available):**
 
 BT prerequisites (see README "Bluetooth prerequisites (macOS, SDL backend)" for the full
-explanation): grant **Input Monitoring** to the Editor/app under System Settings > Privacy &
-Security > Input Monitoring before/when the console logs the not-granted warning — the first sdl
-activation may prompt, or may silently deny with no prompt at all; dev (ad-hoc-signed) binaries
-can lose this grant on rebuild (TCC is tied to code identity, not just path) even with no config
-change, so re-check it if a previously-working BT session starts warning again after a rebuild.
+explanation): grant **Input Monitoring** to the Editor/app — **System Settings > Privacy &
+Security > Input Monitoring** on macOS 13+, or **System Preferences > Security & Privacy >
+Privacy > Input Monitoring** on macOS 11-12 (this gem's floor is 11.3) — before/when the console
+logs the not-granted warning. The first sdl activation may prompt, or may silently deny with no
+prompt at all; dev (ad-hoc-signed) binaries can lose this grant on rebuild (TCC is tied to code
+identity, not just path) even with no config change, so re-check it if a previously-working BT
+session starts warning again after a rebuild.
 Pair via **PS + Create** held until the light bar flashes rapidly, and **unplug USB** while testing
 BT to avoid a dual-connection ambiguity (plugged-in + paired at once). The GUID first byte in the
 transport log (`0x03` USB / `0x05` Bluetooth) is the ground truth for which link is actually active
