@@ -83,6 +83,14 @@ With a DualSense connected via the testbed Editor (USB; BT deferred).
 
 ## Phase 2.6 — autofire feel + keyboard test scene
 
+**2026-07-27: NATIVE backend over BLUETOOTH — PASS (real DualSense, BT link).** Full trigger-mode
+matrix (feedback/weapon/vibration/multifeedback/slope/multivibration/autofire) applied and felt
+correct over Bluetooth via the test scene; OnWeaponTriggerFired events streamed on trigger breaks.
+This closes the native-path "BT deferred" caveat carried since Phase 1 for trigger effects and
+fire detection. Still open: BT rumble/lightbar/haptics spot-checks, and the SDL-backend BT leg
+(Windows/Linux transport validation) — see Phase 3a section.
+
+
 With a DualSense connected via the testbed Editor (USB; BT deferred). Use the keyboard test scene
 (`Assets/DualSenseTest/dualsense_test.inputbindings` + `DualSenseTest.lua` — see README "Test
 scene" for setup) for all items below; this is the per-binding input path deferred from the
