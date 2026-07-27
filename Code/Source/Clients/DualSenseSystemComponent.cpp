@@ -18,6 +18,14 @@
 
 namespace DualSense
 {
+    // Phase 3a stub: not consumed yet. Task 3 will read this to decide between the native
+    // per-platform backend and the SDL3 joystick backend (Phase 3a Task 1 fetches/links SDL3
+    // behind PAL_TRAIT_DUALSENSE_SDL_BACKEND but wires nothing to it). Default "native" preserves
+    // today's behavior bit-for-bit: no code path currently branches on this cvar's value.
+    AZ_CVAR(AZ::CVarFixedString, dualsense_backend, "native", nullptr, AZ::ConsoleFunctorFlags::DontReplicate,
+        "Selects the DualSense input backend: 'native' (per-platform, default) or 'sdl' (SDL3 joystick, Phase 3a+). "
+        "Not yet consumed -- Task 3 wires this up.");
+
     AZ_COMPONENT_IMPL(DualSenseSystemComponent, "DualSenseSystemComponent",
         DualSenseSystemComponentTypeId);
 

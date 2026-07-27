@@ -17,6 +17,20 @@ if(NOT PAL_TRAIT_DUALSENSE_SUPPORTED)
     return()
 endif()
 
+# Phase 3a: SDL3 (joystick-only) is fetched and linked only on platforms where
+# PAL_TRAIT_DUALSENSE_SDL_BACKEND is TRUE (set alongside PAL_TRAIT_DUALSENSE_SUPPORTED in
+# PAL_${PAL_PLATFORM_NAME_LOWERCASE}.cmake, already included above, so it's in scope here).
+# This is flag/link plumbing only: no runtime code path is switched by this yet (see the
+# dualsense_backend cvar stub in DualSenseSystemComponent.cpp, default "native", which Task 3
+# will wire up as the actual consumer). Follows Microphone Gem's
+# PAL_TRAIT_MICROPHONE_USES_LIBSAMPLERATE conditional-3rdParty pattern (Gems/Microphone/Code/CMakeLists.txt).
+set(DUALSENSE_PRIVATE_BUILD_DEPENDENCIES "")
+set(DUALSENSE_PRIVATE_COMPILE_DEFINITIONS "")
+if(PAL_TRAIT_DUALSENSE_SDL_BACKEND)
+    list(APPEND DUALSENSE_PRIVATE_BUILD_DEPENDENCIES 3rdParty::SDL3)
+    list(APPEND DUALSENSE_PRIVATE_COMPILE_DEFINITIONS DUALSENSE_SDL_BACKEND_ENABLED)
+endif()
+
 # The ${gem_name}.API target declares the common interface that users of this gem should depend on in their targets
 ly_add_target(
     NAME ${gem_name}.API INTERFACE
@@ -52,6 +66,11 @@ ly_add_target(
         PUBLIC
             AZ::AzCore
             AZ::AzFramework
+        PRIVATE
+            ${DUALSENSE_PRIVATE_BUILD_DEPENDENCIES}
+    COMPILE_DEFINITIONS
+        PUBLIC
+            ${DUALSENSE_PRIVATE_COMPILE_DEFINITIONS}
 )
 
 # Here add ${gem_name} target, it depends on the Private Object library and Public API interface

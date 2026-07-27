@@ -9,4 +9,5 @@ set(FILES
     Tests/Clients/DualSenseTriggerMappingTests.cpp
     Tests/Clients/DualSenseScriptReflectionTests.cpp
     Tests/Clients/DualSenseTriggerFireDetectorTests.cpp
+    Tests/Clients/DualSenseSdlBackendProbeTests.cpp
 )

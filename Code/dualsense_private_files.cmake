@@ -13,4 +13,6 @@ set(FILES
     Source/Clients/DualSenseTriggerEffectMapping.cpp
     Source/Clients/DualSenseTriggerFireDetector.h
     Source/Clients/DualSenseTriggerFireDetector.cpp
+    Source/Clients/DualSenseSdlBackendProbe.h
+    Source/Clients/DualSenseSdlBackendProbe.cpp
 )
