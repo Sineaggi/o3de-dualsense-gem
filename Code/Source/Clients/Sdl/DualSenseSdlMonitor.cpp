@@ -64,6 +64,29 @@ namespace DualSense
         m_runtime.PumpEvents();
         const AZStd::vector<SDL_JoystickID> current = m_runtime.EnumeratePs5Joysticks();
 
+        // BT-readiness addendum ("3b"): an empty enumeration is ambiguous -- it could mean "no
+        // DualSense is plugged in" (the ordinary case) or "a DualSense IS plugged in but macOS
+        // Input Monitoring access hasn't been granted, so SDL's HID layer can't see it at all".
+        // Make the second case explicit rather than leaving the operator to guess why a physically
+        // connected pad never shows up. Gated on !empty->empty transitions (m_zeroDeviceNoAccessWarned)
+        // the same way m_slotExhaustionWarnedIds is below, so this doesn't re-log every tick for as
+        // long as the permission stays ungranted.
+        if (current.empty() && !m_runtime.HasInputMonitoringAccess())
+        {
+            if (!m_zeroDeviceNoAccessWarned)
+            {
+                AZLOG_WARN(
+                    "DualSense (SDL): no PS5 joysticks enumerated and Input Monitoring access is not granted -- "
+                    "a connected DualSense will be invisible to SDL until permission is granted (System Settings "
+                    "> Privacy & Security > Input Monitoring).");
+                m_zeroDeviceNoAccessWarned = true;
+            }
+        }
+        else
+        {
+            m_zeroDeviceNoAccessWarned = false;
+        }
+
         // New connections: present now, not yet tracked. Collected first (rather than mutating
         // m_trackedIds mid-scan) so the loop below has a stable snapshot to compare against.
         AZStd::vector<SDL_JoystickID> newlyConnected;

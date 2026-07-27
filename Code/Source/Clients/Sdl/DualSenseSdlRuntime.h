@@ -53,6 +53,17 @@ namespace DualSense
             return m_active;
         }
 
+        //! BT-readiness addendum ("3b"). macOS only: true if the process has been granted Input
+        //! Monitoring (TCC) access as of the last Activate() call -- see Activate()'s .cpp comment
+        //! for why SDL's HIDAPI path needs this and the native GameController backend does not.
+        //! Always true on non-Apple platforms (nothing gates HID access there the way macOS does).
+        //! Callers (DualSenseSdlMonitor) use this to give a more actionable warning when
+        //! enumeration comes back empty for a reason that isn't "no controller is plugged in".
+        bool HasInputMonitoringAccess() const
+        {
+            return m_inputMonitoringAccessGranted;
+        }
+
         //! Pumps joystick (and therefore gamepad-layer) state. Call once per
         //! DualSenseSystemImpl::Tick() from the main thread while active; no-op (SDL_WasInit-
         //! gated) if not active.
@@ -72,6 +83,10 @@ namespace DualSense
 
     private:
         bool m_active = false;
+        //! See HasInputMonitoringAccess(). Defaults true: platforms/builds that never run the
+        //! __APPLE__ check in Activate() (non-mac, or a mac process that hasn't activated yet)
+        //! should not report a false "denied" before the first real check ever runs.
+        bool m_inputMonitoringAccessGranted = true;
     };
 } // namespace DualSense
 

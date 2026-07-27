@@ -233,7 +233,19 @@ console commands as the Phase 2.6 items above, selecting the SDL backend at the 
 
 **Idle-stability and Bluetooth (if pairing available):**
 
+BT prerequisites (see README "Bluetooth prerequisites (macOS, SDL backend)" for the full
+explanation): grant **Input Monitoring** to the Editor/app under System Settings > Privacy &
+Security > Input Monitoring before/when the console logs the not-granted warning — the first sdl
+activation may prompt, or may silently deny with no prompt at all; dev (ad-hoc-signed) binaries
+can lose this grant on rebuild (TCC is tied to code identity, not just path) even with no config
+change, so re-check it if a previously-working BT session starts warning again after a rebuild.
+Pair via **PS + Create** held until the light bar flashes rapidly, and **unplug USB** while testing
+BT to avoid a dual-connection ambiguity (plugged-in + paired at once). The GUID first byte in the
+transport log (`0x03` USB / `0x05` Bluetooth) is the ground truth for which link is actually active
+— trust it over assumptions about cable/pairing state.
+
 - [ ] Idle-stability: SDL backend active, no input/effects applied, let it sit for several minutes
       (confirm no spurious log spam, no phantom inputs, clean idling).
 - [ ] Bluetooth if available: repeat all items above over Bluetooth; GUID byte should be `0x05`
       (vs. `0x03` USB). Record any Bluetooth-specific behavior differences vs. USB.
+- [ ] First sdl activation over BT: permission warn absent (or granted), pad enumerates, GUID logs 05

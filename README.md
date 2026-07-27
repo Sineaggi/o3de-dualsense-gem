@@ -210,3 +210,33 @@ Both backends can coexist in the same process (GameController.framework and SDL3
 ### Windows / Linux enablement
 
 The SDL backend can be enabled on Windows and Linux by flipping the `PAL_TRAIT_DUALSENSE_SDL_BACKEND` flag in each platform's PAL file (e.g., `Code/Platform/Windows/PAL_windows.cmake`). The C++ source code (`Code/Source/Clients/Sdl/`) is already portable across these platforms — it compiles clean on any platform with SDL3 available, even if not deployed yet.
+
+### Bluetooth prerequisites (macOS, SDL backend)
+
+The SDL backend talks to the DualSense over raw HID (SDL3's HIDAPI-based PS5 driver), which macOS gates
+behind the **Input Monitoring** privacy permission (TCC) — a check the native GameController backend
+never needs, since it does not use HID directly. Before relying on `dualsense_backend sdl` over
+Bluetooth:
+
+- **Input Monitoring permission.** The first time the sdl backend activates (`dualsense_backend sdl`),
+  it checks (`IOHIDCheckAccess`) whether this permission has been granted; the check itself never
+  triggers a prompt. macOS may prompt the user the first time SDL actually attempts to open a matching
+  HID device, or it may silently deny with no prompt at all depending on prior history for this binary —
+  don't assume a prompt will appear. If the console logs `DualSense (SDL): Input Monitoring permission
+  has not been granted...`, grant it manually under **System Settings > Privacy & Security > Input
+  Monitoring** (add/enable the Editor or the built app), then relaunch.
+- **TCC rebinds on rebuild.** macOS's TCC grants are tied to the binary's code signature/identity, not
+  just its path. A dev (ad-hoc-signed, frequently-relinked) Editor or launcher binary can silently lose
+  its Input Monitoring grant after a rebuild, even though nothing in System Settings changed — if a
+  previously-working BT session suddenly logs the not-granted warning after a rebuild, re-grant the
+  permission (may require removing and re-adding the entry, not just re-checking it) rather than
+  assuming a code regression.
+- **Pairing.** Put the DualSense into Bluetooth pairing mode by holding **PS + Create** until the light
+  bar starts flashing rapidly, then pair it from macOS's Bluetooth settings. **Unplug the USB cable**
+  while testing over Bluetooth — a DualSense that is both plugged in and paired can present as two
+  ambiguous connections at once, making it unclear which transport is actually being exercised.
+- **GUID first byte is ground truth.** This backend logs each connection's transport via the
+  `SDL_GUID`'s first byte (`DualSense (SDL): joystick N transport byte 0x03/0x05 (USB/Bluetooth)`,
+  emitted by `DualSenseSdlRuntime::LogTransport`) — `0x03` = USB, `0x05` = Bluetooth. Trust this log
+  line over assumptions about which cable/pairing state you think is active; it is the actual value SDL
+  derived from the device, not what you intended to test.

@@ -4,6 +4,17 @@
 
 #include <AzCore/Console/ILogger.h>
 
+#if defined(__APPLE__)
+// NOTE: the task brief's assumed header (IOKit/hid/IOHIDLib.h) does not declare
+// IOHIDCheckAccess/kIOHIDRequestTypeListenEvent/kIOHIDAccessTypeGranted -- verified by grepping
+// the actual macOS SDK (Xcode.app's MacOSX.sdk IOKit.framework/Headers tree): those symbols live
+// in IOKit/hidsystem/IOHIDLib.h instead (confirmed the hard way: the plain hid/IOHIDLib.h include
+// compiled but left kIOHIDRequestTypeListenEvent/kIOHIDAccessTypeGranted as undeclared
+// identifiers -- a real build-red, fixed by switching the include, not by declaring the symbols
+// by hand).
+#include <IOKit/hidsystem/IOHIDLib.h>
+#endif
+
 namespace DualSense
 {
     namespace
@@ -37,6 +48,33 @@ namespace DualSense
         {
             return true;
         }
+
+#if defined(__APPLE__)
+        // BT-readiness addendum ("3b"): macOS's TCC privacy subsystem gates raw HID access under
+        // "Input Monitoring" -- a permission the native GameController.framework backend never
+        // needs (it does not talk HID directly) but that SDL3's HIDAPI-based PS5 driver does.
+        // IOHIDCheckAccess ONLY reads the current grant state; it never itself triggers the
+        // permission prompt (macOS only prompts the first time this process actually opens a
+        // matching HID device -- that happens deeper in SDL3's own hidapi_darwin backend, not
+        // here). Checked unconditionally on every Activate() (cheap; this function already only
+        // runs once per activation thanks to the m_active early-return above), so re-activating
+        // the sdl backend after switching away and back re-checks in case the user granted access
+        // mid-session and relaunched, or the OS revoked it.
+        //
+        // Availability: IOHIDCheckAccess ships since macOS 10.15. This repo's actual floor is
+        // 11.3 (see the adaptive-trigger/CoreHaptics macOS-version gates already in the native
+        // backend, and DualSense.gem.json's platform requirements) -- above 10.15 with no gap, so
+        // a plain unguarded call is correct here; no @available/__builtin_available needed.
+        m_inputMonitoringAccessGranted = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted;
+        if (!m_inputMonitoringAccessGranted)
+        {
+            AZLOG_WARN(
+                "DualSense (SDL): Input Monitoring permission has not been granted to this app. Grant it under "
+                "System Settings > Privacy & Security > Input Monitoring (add/enable the Editor or this "
+                "app), then relaunch. The SDL backend's HID access requires this permission; the native "
+                "GameController backend (dualsense_backend native) does not.");
+        }
+#endif // defined(__APPLE__)
 
         // Hint names verified against the fetched SDL3 3.4.12 headers
         // (_deps/sdl3-src/include/SDL3/SDL_hints.h in the engine build tree). The task brief's

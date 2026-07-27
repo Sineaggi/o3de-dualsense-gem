@@ -93,6 +93,61 @@ block()
     # so on:
     FetchContent_MakeAvailable(SDL3)
 
+    # BT-readiness addendum ("3b"): assert the fetched SDL3 actually compiled in the HIDAPI
+    # joystick driver. Without HIDAPI, SDL3 has no PS5 driver at all: SDL_SendJoystickEffect
+    # (this gem's adaptive-trigger path) and SDL_GetGamepadTypeForID's PS5 detection (this gem's
+    # whole hotplug-monitor design, see DualSenseSdlMonitor::EnumeratePs5Joysticks) don't error out
+    # without it -- they just silently return nothing/wrong-type, which would look like "no
+    # DualSense connected" or "adaptive triggers do nothing" at runtime with zero diagnostic
+    # signal pointing back at a build-configuration problem. Fail loudly here, at configure time,
+    # instead of mysteriously at runtime.
+    #
+    # Locating the real file: SDL3's own CMakeLists.txt (searched the fetched
+    # release-3.4.12 tree, around its `SDL_JOYSTICK_HIDAPI` cache-variable / build-config section)
+    # writes this value in two steps, because config variables may contain generator expressions:
+    #   1. `configure_file("${SDL3_SOURCE_DIR}/include/build_config/SDL_build_config.h.cmake"
+    #      "${SDL3_BINARY_DIR}/CMakeFiles/SDL_build_config.h.intermediate")` -- runs eagerly, the
+    #      moment SDL3's CMakeLists.txt is processed (i.e. already done by the
+    #      FetchContent_MakeAvailable call directly above), with every value that has no generator
+    #      expression already fully resolved. `SDL_JOYSTICK_HIDAPI` is a plain
+    #      `#define SDL_JOYSTICK_HIDAPI 1`/absent line (verified: no `$<...>` in it), so this
+    #      intermediate file already has the real answer.
+    #   2. `file(GENERATE OUTPUT "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/
+    #      build_config/SDL_build_config.h" INPUT "...SDL_build_config.h.intermediate")` -- this is
+    #      the header actually on the compiler's include path, but `file(GENERATE)` is deferred to
+    #      CMake's generate phase, which runs after every CMakeLists.txt (including this one) has
+    #      finished processing. It does not exist yet at this point in the configure, so it cannot
+    #      be checked here (and with a multi-config generator -- this engine defaults to Ninja
+    #      Multi-Config -- there is one per config: debug/profile/release, not one canonical path
+    #      anyway).
+    # So the step-1 intermediate is what this check reads. Confirmed against this repo's actual
+    # build tree: `<build dir>/_deps/sdl3-build/CMakeFiles/SDL_build_config.h.intermediate` exists
+    # right after this FetchContent_MakeAvailable call and contains `#define SDL_JOYSTICK_HIDAPI 1`
+    # on a real hardware-fetched configure.
+    FetchContent_GetProperties(SDL3 BINARY_DIR sdl3_binary_dir_for_hidapi_check)
+    set(sdl3_build_config_intermediate "${sdl3_binary_dir_for_hidapi_check}/CMakeFiles/SDL_build_config.h.intermediate")
+    if (NOT EXISTS "${sdl3_build_config_intermediate}")
+        message(FATAL_ERROR
+            "DualSense gem: expected SDL3's generated build-config header at "
+            "'${sdl3_build_config_intermediate}' but it does not exist. SDL3's CMakeLists.txt "
+            "internal layout may have changed since release-3.4.12 (the tag this gem is pinned "
+            "to) -- update the HIDAPI assertion in 3rdParty/FindSDL3.cmake to match the new "
+            "location before proceeding.")
+    endif()
+    file(STRINGS "${sdl3_build_config_intermediate}" sdl3_hidapi_define
+        REGEX "^#define[ \t]+SDL_JOYSTICK_HIDAPI[ \t]+1[ \t]*$")
+    if (NOT sdl3_hidapi_define)
+        message(FATAL_ERROR
+            "DualSense gem: the fetched SDL3 (release-3.4.12) was NOT built with the HIDAPI "
+            "joystick driver (SDL_JOYSTICK_HIDAPI is not defined =1 in "
+            "'${sdl3_build_config_intermediate}'). Without HIDAPI, SDL3 has no PS5 driver: "
+            "SDL_SendJoystickEffect (adaptive triggers) and SDL_GetGamepadTypeForID's PS5 "
+            "detection will silently degrade or misbehave at runtime instead of failing -- this "
+            "gem depends on both. Check the SDL_HIDAPI/SDL_JOYSTICK options set above in this "
+            "file, and this platform's HIDAPI prerequisites (see the fetched SDL3 tree's own "
+            "docs/README-hidapi.md).")
+    endif()
+
     set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
 endblock()
 

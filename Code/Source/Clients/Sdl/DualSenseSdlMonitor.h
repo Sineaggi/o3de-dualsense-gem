@@ -68,6 +68,12 @@ namespace DualSense
         //! reconnecting later warns again) and in OnJoystickConnected on a successful Assign
         //! (a slot freed up and this id claimed it).
         AZStd::vector<SDL_JoystickID> m_slotExhaustionWarnedIds;
+        //! BT-readiness addendum ("3b"). Set once Tick() has warned that enumeration came back
+        //! empty while macOS Input Monitoring access is not granted (see Tick()'s .cpp comment);
+        //! cleared as soon as enumeration is non-empty again, so the warning re-fires if the
+        //! condition recurs (e.g. permission revoked again after being granted) rather than being
+        //! silently suppressed forever after the first occurrence.
+        bool m_zeroDeviceNoAccessWarned = false;
     };
 } // namespace DualSense
 
