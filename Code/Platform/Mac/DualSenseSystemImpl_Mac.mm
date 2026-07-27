@@ -1,9 +1,16 @@
 #include <Clients/DualSenseSystemImpl.h>
 #include <Clients/DualSenseSystemComponent.h>
 #include <Clients/DualSenseSlotTracker.h>
+#include <Clients/DualSenseBackendSelection.h>
 #include "DualSenseMacGamepadImplFactory.h"
 
+#if defined(DUALSENSE_SDL_BACKEND_ENABLED)
+#include <Clients/Sdl/DualSenseSdlRuntime.h>
+#include <Clients/Sdl/DualSenseSdlMonitor.h>
+#endif
+
 #include <AzCore/Console/ILogger.h>
+#include <AzCore/std/smart_ptr/unique_ptr.h>
 
 #import <GameController/GameController.h>
 
@@ -15,10 +22,136 @@ namespace DualSense
 {
     class DualSenseSystemImplMac
         : public DualSenseSystemImpl
+        , public DualSenseBackendCVarNotificationBus::Handler
     {
     public:
         explicit DualSenseSystemImplMac(DualSenseSystemComponent& owner)
             : DualSenseSystemImpl(owner)
+        {
+            DualSenseBackendCVarNotificationBus::Handler::BusConnect();
+            // Consult the cvar once at activation (BarrierInput cvar-callback pattern -- see
+            // OnDualSenseBackendCVarChanged() below, which the bus connect above wires to the
+            // AZ_CVAR callback in DualSenseSystemComponent.cpp) and bring up whichever stack it
+            // names. m_activeStack starts at None, so this always takes the "bring up" branch of
+            // ApplyBackendSelection below, never a teardown of nothing.
+            ApplyBackendSelection(GetDualSenseBackendSelection());
+        }
+
+        ~DualSenseSystemImplMac() override
+        {
+            DualSenseBackendCVarNotificationBus::Handler::BusDisconnect();
+            TeardownNative();
+            TeardownSdl();
+        }
+
+        void Tick() override
+        {
+#if defined(DUALSENSE_SDL_BACKEND_ENABLED)
+            if (m_sdlMonitor)
+            {
+                m_sdlMonitor->Tick();
+            }
+#endif
+            // The native path is entirely GameController-notification-driven (see the
+            // constructor/destructor below) -- nothing to pump here for it.
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////
+        // DualSenseBackendCVarNotificationBus::Handler
+        void OnDualSenseBackendCVarChanged() override
+        {
+            ApplyBackendSelection(GetDualSenseBackendSelection());
+        }
+
+    private:
+        enum class Stack
+        {
+            None,
+            Native,
+            Sdl
+        };
+
+        //! Switches the live stack to match `selection`, restoring every slot the CURRENTLY
+        //! active stack owns before bringing up the new one (per the task brief: "switching:
+        //! restore all slots, tear down old monitor/stack, bring up new"). No-op if `selection`
+        //! already matches what's live (e.g. the console echoing the same value back, or the
+        //! constructor's initial call landing on the cvar's own default). Also called once from
+        //! the constructor with m_activeStack still at None, which always takes the "bring up"
+        //! branch below with nothing to tear down first.
+        void ApplyBackendSelection(BackendSelection selection)
+        {
+            const Stack target = (selection == BackendSelection::Sdl) ? Stack::Sdl : Stack::Native;
+            if (target == m_activeStack)
+            {
+                return;
+            }
+
+            switch (m_activeStack)
+            {
+            case Stack::Native:
+                TeardownNative();
+                break;
+            case Stack::Sdl:
+                TeardownSdl();
+                break;
+            case Stack::None:
+                break;
+            }
+            m_activeStack = Stack::None;
+
+            switch (target)
+            {
+            case Stack::Native:
+                SetupNative();
+                break;
+            case Stack::Sdl:
+                SetupSdl();
+                break;
+            case Stack::None:
+                break;
+            }
+            m_activeStack = target;
+        }
+
+        //! Brings up the SDL3 joystick-layer backend: activates DualSenseSdlRuntime (lazy
+        //! SDL_Init happens here, and ONLY here -- see DualSenseSdlRuntime.h) and constructs the
+        //! monitor. On DUALSENSE_SDL_BACKEND_ENABLED-undefined platforms (SDL3 not linked at
+        //! all), this is a hard compile-time gate: `dualsense_backend sdl` logs a warning and the
+        //! gem stays passive, with zero SDL calls possible even in principle (there is no SDL3
+        //! symbol reachable from this translation unit to call).
+        void SetupSdl()
+        {
+#if defined(DUALSENSE_SDL_BACKEND_ENABLED)
+            if (!m_sdlRuntime.Activate())
+            {
+                AZLOG_WARN("DualSense: dualsense_backend=sdl selected but SDL_Init failed; "
+                           "DualSense support stays inactive until the backend is reselected");
+                return;
+            }
+            m_sdlMonitor = AZStd::make_unique<DualSenseSdlMonitor>(m_sdlRuntime);
+#else
+            AZLOG_WARN("DualSense: dualsense_backend=sdl selected, but this build was not compiled with "
+                       "DUALSENSE_SDL_BACKEND_ENABLED (PAL_TRAIT_DUALSENSE_SDL_BACKEND was FALSE for this "
+                       "platform) -- SDL3 is not linked, so no SDL call can be made. DualSense support stays "
+                       "inactive under this backend selection.");
+#endif
+        }
+
+        //! Tears down the SDL stack, if any: destroying the monitor first restores every slot it
+        //! still owns (see DualSenseSdlMonitor's destructor), THEN the runtime is deactivated
+        //! (SDL_Quit) -- that ordering matters, restoring a slot swaps a *live* Implementation
+        //! back to the platform default, which must happen while SDL is still active enough for
+        //! the outgoing InputDeviceGamepadDualSenseSdl's destructor to do its best-effort
+        //! trigger-clear/haptics-stop.
+        void TeardownSdl()
+        {
+#if defined(DUALSENSE_SDL_BACKEND_ENABLED)
+            m_sdlMonitor.reset();
+            m_sdlRuntime.Deactivate();
+#endif
+        }
+
+        void SetupNative()
         {
             if (@available(macOS 11.3, *))
             {
@@ -85,10 +218,13 @@ namespace DualSense
             }
         }
 
-        ~DualSenseSystemImplMac() override
+        //! Formerly this class's destructor body (pre-Task-3, when the native GameController
+        //! path was the only stack that ever existed) -- now invoked from ApplyBackendSelection
+        //! and from ~DualSenseSystemImplMac whenever the native stack is the one currently live.
+        void TeardownNative()
         {
             // Flip the alive flag first, before anything else can run: any block already
-            // enqueued on the main queue (see constructor comment) will see this false and
+            // enqueued on the main queue (see SetupNative's comment) will see this false and
             // return without touching `this`.
             *m_alive = false;
             if (@available(macOS 11.3, *))
@@ -102,9 +238,13 @@ namespace DualSense
                 if (m_connectObserver) { [center removeObserver:m_connectObserver]; }
                 if (m_disconnectObserver) { [center removeObserver:m_disconnectObserver]; }
             }
+            // Reset so a subsequent SetupNative (a switch back from sdl) starts from the same
+            // clean state the constructor did -- a fresh alive-flag and no stale observer ids.
+            m_alive = std::make_shared<bool>(true);
+            m_connectObserver = nil;
+            m_disconnectObserver = nil;
         }
 
-    private:
         void OnControllerConnected(GCController* controller) API_AVAILABLE(macos(11.3))
         {
             if (![controller.extendedGamepad isKindOfClass:[GCDualSenseGamepad class]])
@@ -169,6 +309,14 @@ namespace DualSense
         // Shared with the notification-observer blocks below; see the constructor/destructor
         // comments for why this is needed (an already-enqueued block can outlive `this`).
         std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+
+        // Backend-selection state (Phase 3a Task 3). m_activeStack starts at None so the
+        // constructor's ApplyBackendSelection call always takes the "bring up" branch.
+        Stack m_activeStack = Stack::None;
+#if defined(DUALSENSE_SDL_BACKEND_ENABLED)
+        DualSenseSdlRuntime m_sdlRuntime;
+        AZStd::unique_ptr<DualSenseSdlMonitor> m_sdlMonitor;
+#endif
     };
 
     AZStd::unique_ptr<DualSenseSystemImpl> DualSenseSystemImpl::Create(DualSenseSystemComponent& owner)

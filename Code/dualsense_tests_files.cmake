@@ -11,4 +11,6 @@ set(FILES
     Tests/Clients/DualSenseScriptReflectionTests.cpp
     Tests/Clients/DualSenseTriggerFireDetectorTests.cpp
     Tests/Clients/DualSenseSdlBackendProbeTests.cpp
+    Tests/Clients/DualSenseBackendSelectionTests.cpp
+    Tests/Clients/DualSenseSdlAxisTests.cpp
 )

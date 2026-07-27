@@ -158,3 +158,91 @@ gamepad bindings elsewhere:
 - [ ] No spurious/held-key event spam while a key is held down but not repeatedly pressed
       (confirms dead-zone/event-edge handling in the bindings pipeline, standing in for the
       deferred gamepad stick-deadzone item since the same pipeline code handles both)
+
+## Phase 3a Task 3: SDL3 backend (`dualsense_backend sdl`), macOS
+
+All unchecked -- Task 4 will fold results/corrections into the README. Run the same test
+scene/console commands as the native-backend items above, but with `dualsense_backend sdl` set
+(console command, or `+dualsense_backend sdl` on the command line) before/while a DualSense is
+connected. This is the empirical answer to the Mac "two writers" question the plan called out:
+GameController.framework (stock engine + this gem's native backend) and SDL3 (this gem's sdl
+backend) both being able to open the same USB/BT DualSense from the same process.
+
+**Backend selection / flag purity:**
+
+- [ ] Default (`dualsense_backend` left at `native`): confirm via Console/log that no
+      `DualSense (SDL):` log lines ever appear and no SDL_Init cost is paid -- behavior is
+      bit-for-bit identical to pre-Task-3.
+- [ ] `dualsense_backend sdl` typed at the console with a DualSense already connected -> native
+      GameController slot is released (log: "restoring platform default"), SDL backend activates
+      (log: "backend activated"), monitor detects the same physical pad within a tick or two (log:
+      "controller detected, taking over gamepad slot N") and its GUID bus byte is logged (`0x03`
+      USB / `0x05` Bluetooth -- confirm it matches the actual cable/BT state).
+- [ ] `dualsense_backend native` typed back while sdl is active -> reverse of the above (SDL slot
+      restored, SDL backend deactivated/`SDL_Quit`'d, native GameController stack reclaims the pad
+      within a tick or two).
+- [ ] Rapid back-and-forth (`sdl`/`native`/`sdl`/...) several times in a row -> no crash, no
+      duplicate slot claims, no leaked SDL_Gamepad handles (watch for repeated "closing gamepad
+      handle" debug logs matching each activation).
+- [ ] Two physical DualSense pads connected simultaneously while switching backends -> both slots
+      swap together, no cross-wiring (pad A never ends up driving pad B's slot).
+
+**Input parity vs. native (buttons/sticks/triggers-as-digital-input):**
+
+- [ ] All 14 digital buttons (face buttons, D-pad, L1/R1/L3/R3, Start/Select) report identically to
+      the native backend.
+- [ ] Both sticks: X axis matches native (no left/right flip); Y axis matches native (no up/down
+      flip -- this is the axis this backend inverts in code, SDL's raw convention being
+      down-positive; confirm the inversion is actually correct on real hardware, not just by
+      inspection).
+- [ ] Both analog triggers (as continuous 0-1 input, independent of any adaptive-trigger effect)
+      match native's feel/range.
+
+**Adaptive triggers via the raw HID compiler (`SDL_SendJoystickEffect`):**
+
+- [ ] Every mode reachable from `dualsense_trigger`/the test scene's keys (Off, Feedback, Weapon,
+      Vibration, SlopeFeedback, MultiPositionFeedback, MultiPositionVibration) feels correct over
+      SDL, both USB and (separately, deliberately) Bluetooth.
+- [ ] Per-trigger targeting (L2 vs R2 vs Both) isolates correctly, with explicit clears between
+      steps (per the porting guide: a single-trigger write doesn't clear the other trigger --
+      confirm that's still true through this backend).
+- [ ] `dualsense_trigger_clear` returns to neutral cleanly from every mode above.
+
+**Rumble / light bar (SDL_RumbleJoystick / SDL_SetJoystickLED):**
+
+- [ ] `dualsense_rumble` produces felt rumble, stops when re-issued with `0 0`, and does NOT
+      silently stop before the caller says so (validates the "indefinite duration" choice in
+      `InputDeviceGamepadDualSenseSdl::SetVibration` -- let it run for several minutes unattended
+      if practical, confirming it does not time out early on real firmware).
+- [ ] `dualsense_lightbar` sets the color correctly; compare hue/brightness against the native
+      (CoreHaptics-adjacent GameController) light bar path for any visible discrepancy.
+- [ ] Rumble and an active trigger effect coexist without interference (mirrors the native-backend
+      coexistence checks above) -- confirms the porting guide's "trigger effects survive engine
+      rumble/LED writes" finding holds through SDL's own PS5 driver too.
+
+**Haptic-pulse/buzz degradation (rumble-emulation approximation, NOT CoreHaptics):**
+
+- [ ] `dualsense_pulse` produces a felt rumble burst (not silence) -- confirm the degrade path
+      actually reaches hardware, and that the one-time `AZLOG_DEBUG` degrade-notice appears exactly
+      once per gamepad instance, not once per call.
+- [ ] Compare the felt quality against the native backend's CoreHaptics tap/buzz -- expected to
+      feel like ordinary rumble, not a crisp haptic tap; record how different it actually feels.
+- [ ] `SetAutoRecoil` / weapon-fire-edge behavior: confirm `OnWeaponTriggerFired` never fires under
+      `dualsense_backend sdl` (no adaptive-trigger status API on this path -- expected, not a bug;
+      this is the item Task 4's README note documents).
+
+**Coexistence with the stock engine / a second physical pad on the OTHER backend:**
+
+- [ ] With pad A on `dualsense_backend sdl` and a second physical DualSense (pad B) left on the
+      stock engine's native GameController backend (never taken over -- e.g. temporarily rename
+      away Task 3's cvar effect, or test before switching) simultaneously connected: confirm pad A
+      and pad B do not interfere with each other's input/effects. This is the actual two-writers
+      scenario (SDL and GameController.framework both live in-process against different physical
+      units); record any surprises.
+- [ ] Disconnect pad A (sdl-owned) mid-effect -> no crash, "restoring platform default" log, clean
+      teardown; reconnect -> monitor re-detects and re-takes-over within a tick or two.
+
+**Deferred, consistent with all prior phases' BT deferral policy:**
+
+- [ ] Full Bluetooth pass of every item above (this section assumes USB-first verification, same
+      as every earlier phase in this gem).

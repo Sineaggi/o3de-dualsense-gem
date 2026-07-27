@@ -16,4 +16,14 @@ set(FILES
     Source/Clients/DualSenseTriggerFireDetector.cpp
     Source/Clients/DualSenseSdlBackendProbe.h
     Source/Clients/DualSenseSdlBackendProbe.cpp
+    Source/Clients/DualSenseBackendSelection.h
+    Source/Clients/DualSenseBackendSelection.cpp
+    Source/Clients/Sdl/DualSenseSdlAxisMath.h
+    Source/Clients/Sdl/DualSenseSdlAxisMath.cpp
+    Source/Clients/Sdl/DualSenseSdlRuntime.h
+    Source/Clients/Sdl/DualSenseSdlRuntime.cpp
+    Source/Clients/Sdl/DualSenseSdlMonitor.h
+    Source/Clients/Sdl/DualSenseSdlMonitor.cpp
+    Source/Clients/Sdl/InputDeviceGamepadDualSenseSdl.h
+    Source/Clients/Sdl/InputDeviceGamepadDualSenseSdl.cpp
 )
