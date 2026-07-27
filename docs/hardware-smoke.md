@@ -169,6 +169,16 @@ gamepad bindings elsewhere:
 
 ## Phase 3a — SDL backend (macOS A/B)
 
+**2026-07-27: SDL BACKEND OVER BLUETOOTH — PASS (real DualSense, transport byte 0x05 logged).**
+Backend activated cleanly, pad detected and claimed via SDL, trigger modes 1-7 applied and felt
+correct through the gem's raw byte compiler -> SDL_SendJoystickEffect -> SDL BT framing/CRC.
+This hardware-validates the exact transport stack the Windows/Linux backends will use.
+Finding from the same session: editor fly-cam DRIFT under sdl backend — root-caused to zero
+stick deadzones (correct for pre-filtered GameController input, wrong for SDL raw ADC values);
+fix: XInput-canonical deadzones in the SDL impl (see deadzone-fix commit). Re-verify no-drift
+after the fix.
+
+
 All items unchecked. Run the test scene/console commands with `dualsense_backend sdl` active
 (set via console command or `+dualsense_backend sdl` command-line flag before launching). This
 section validates the SDL3 backend implementation and verifies coexistence with the stock
