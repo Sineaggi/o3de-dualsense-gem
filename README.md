@@ -18,6 +18,16 @@ See docs/hardware-smoke.md for smoke-test checklist.
 2. Enable it for a project: `scripts/o3de.sh enable-gem -gn DualSense -pp <project-path>`
 3. Configure + build your project as usual.
 
+## Quick launch (Mac)
+
+    scripts/launch-testbed.sh            # launch the testbed Editor (native backend)
+    scripts/launch-testbed.sh -s         # launch with the SDL backend selected
+    scripts/launch-testbed.sh -b -a -t   # rebuild, process assets, run tests, then launch
+    scripts/launch-testbed.sh --help     # all options
+
+Launched via `open` (launchd-owned). After changing anything under `Assets/`, use `-a` —
+never rely on hot-reload with a live Editor (known engine heap-corruption bug in Lua reload).
+
 ## Build & test (Mac)
 
     cd ~/Source/o3de
