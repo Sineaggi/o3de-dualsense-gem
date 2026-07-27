@@ -156,3 +156,57 @@ The `[` / `]` sweep exists specifically to lock in the repeated-fire feel empiri
 start autofire at the assumed 25 Hz mapping (0.098 normalized), then tap `[` / `]` while the trigger
 is held to find the value that actually feels like 25 Hz on real hardware, and record it in
 `docs/hardware-smoke.md`.
+
+## Backends
+
+DualSense input and haptics on macOS can use one of two backend implementations. The `dualsense_backend`
+console variable selects between them at runtime (no restart required).
+
+### Backend selection
+
+**Console command:** `dualsense_backend native|sdl`
+
+**Default:** `native` (per-platform, using GameController.framework on macOS).
+
+**Effective immediately** — the cvar callback tears down the current backend (releasing all held
+gamepads, restoring slots to the platform default) and activates the new one. Switching back and
+forth mid-session is safe; all gamepad slots are re-claimed when the new backend starts.
+
+### Capability matrix
+
+| Capability | Native | SDL3 (3.4.12) |
+|---|---|---|
+| Gamepad input (buttons, sticks, triggers) | ✓ | ✓ |
+| Rumble (two-motor vibration) | ✓ | ✓ via `SDL_RumbleJoystick` |
+| Light bar color control | ✓ | ✓ via `SDL_SetJoystickLED` |
+| **Adaptive trigger effects** | ✓ Full: Feedback, Weapon, Vibration, SlopeFeedback, MultiPositionFeedback, MultiPositionVibration | ✓ Full: same modes via raw PS5 HID compiler + `SDL_SendJoystickEffect` |
+| Haptic pulse/buzz (transient haptic feedback) | ✓ CoreHaptics (crisp, sharp taps) | ⚠ Rumble emulation (short rumble bursts; lower fidelity than CoreHaptics) |
+| Weapon trigger fire detection (`OnWeaponTriggerFired` event) | ✓ | ✗ SDL has no adaptive-trigger status query |
+| Autofire / per-shot recoil | ✓ Fires on trigger-break via CoreHaptics | ✗ No fire detection → no callback firing (see Weapon fire detection above) |
+| Trigger feel parity vs. native | — | ⚠ Measurable divergence: the native backend uses Apple's normalized API (`GCDualSenseAdaptiveTrigger`); the SDL backend uses the raw PS5 protocol directly. Both feel correct but are not identical. The test scene (`Assets/DualSenseTest/`) allows empirical per-mode comparison. |
+
+### Build flags
+
+**PAL trait** `PAL_TRAIT_DUALSENSE_SDL_BACKEND`:
+- `TRUE` on macOS, Windows, Linux (SDL3 build is available on these platforms).
+- `FALSE` on Android, iOS (SDL3 not linked on these platforms; `dualsense_backend sdl` is a no-op with a warning log).
+
+**Compile definition** `DUALSENSE_SDL_BACKEND_ENABLED`: defined when `PAL_TRAIT_DUALSENSE_SDL_BACKEND` is `TRUE`. Guards all SDL-specific source files (`Code/Source/Clients/Sdl/*.cpp`).
+
+**CMake dependency**: SDL3 (pinned to `release-3.4.12` tag) is fetched and linked as a private dependency of `DualSense.Private.Object` only when the PAL trait is true.
+
+### SDL version pinned
+
+**Version:** `release-3.4.12` (2026-07-01). This is the latest stable SDL3 at the time this backend was implemented. A future update to a newer SDL3 release is straightforward — update the tag/hash in `3rdParty/FindSDL3.cmake` and re-run the configure step.
+
+### macOS A/B testing intent
+
+Both backends can coexist in the same process (GameController.framework and SDL3 managing different physical pads, or the same pad switching ownership at runtime). This allows:
+
+1. **Live A/B comparison** on a single development machine: set one DualSense to `native`, a second to `sdl`, and compare feel/behavior side by side.
+2. **Gradual rollout** or **fallback path**: deploy the SDL backend alongside the native one and use the cvar to switch between them in the field if issues arise, without recompiling or restarting.
+3. **Platform-validation path**: the native backend is macOS-only (GameController.framework); SDL is cross-platform. Validating the same input/effects contract on SDL before rolling out to Linux/Windows reduces platform-specific regressions.
+
+### Windows / Linux enablement
+
+The SDL backend can be enabled on Windows and Linux by flipping the `PAL_TRAIT_DUALSENSE_SDL_BACKEND` flag in each platform's PAL file (e.g., `Code/Platform/Windows/PAL_windows.cmake`). The C++ source code (`Code/Source/Clients/Sdl/`) is already portable across these platforms — it compiles clean on any platform with SDL3 available, even if not deployed yet.
