@@ -38,6 +38,16 @@ namespace DualSense
         //! the range, consistent with this gem's existing DualSense::TriggerEffect::Clamped()
         //! defensive-clamping style.
         float NormalizeTriggerAxis(AZ::s16 raw);
+
+        //! XInput-canonical normalized deadzones for rest-noise filtering (SDL delivers raw ADC
+        //! values with rest noise, unlike GameController which pre-filters). These values match
+        //! the Windows backend's RawGamepadState defaults for cross-platform feel parity, derived
+        //! from XInput's own ADC constants: XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE (7849),
+        //! XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE (8689), XINPUT_GAMEPAD_TRIGGER_THRESHOLD (30).
+        // Values derived from XInput constants normalized to 0.0-1.0 range
+        constexpr float TriggerDeadZone = 30.0f / 255.0f;           //!< 0.11765... normalized from ADC max 255
+        constexpr float LeftThumbStickDeadZone = 7849.0f / 32767.0f;  //!< 0.23954... normalized from ADC max 32767
+        constexpr float RightThumbStickDeadZone = 8689.0f / 32767.0f; //!< 0.26519... normalized from ADC max 32767
     } // namespace SdlAxisMath
 } // namespace DualSense
 

@@ -63,6 +63,28 @@ namespace DualSenseTests
         // negative input rather than only trusting the documented range.
         EXPECT_FLOAT_EQ(DualSense::SdlAxisMath::NormalizeTriggerAxis(-100), 0.0f);
     }
+
+    // --- Deadzone constants: XInput-canonical values for cross-platform feel parity ---
+    // These constants guard against accidental regression to zero deadzones (which would leak
+    // SDL's raw ADC rest noise into the engine, causing fly-cam drift as observed in the field).
+
+    TEST_F(SdlAxisFixture, DeadzoneConstants_TriggerDeadZone_EqualsXInputRatio)
+    {
+        // XINPUT_GAMEPAD_TRIGGER_THRESHOLD = 30, max ADC = 255
+        EXPECT_FLOAT_EQ(DualSense::SdlAxisMath::TriggerDeadZone, 30.0f / 255.0f);
+    }
+
+    TEST_F(SdlAxisFixture, DeadzoneConstants_LeftThumbStickDeadZone_EqualsXInputRatio)
+    {
+        // XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE = 7849, max ADC = 32767
+        EXPECT_FLOAT_EQ(DualSense::SdlAxisMath::LeftThumbStickDeadZone, 7849.0f / 32767.0f);
+    }
+
+    TEST_F(SdlAxisFixture, DeadzoneConstants_RightThumbStickDeadZone_EqualsXInputRatio)
+    {
+        // XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE = 8689, max ADC = 32767
+        EXPECT_FLOAT_EQ(DualSense::SdlAxisMath::RightThumbStickDeadZone, 8689.0f / 32767.0f);
+    }
 } // namespace DualSenseTests
 
 #endif // DUALSENSE_SDL_BACKEND_ENABLED

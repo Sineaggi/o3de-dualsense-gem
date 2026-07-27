@@ -56,14 +56,14 @@ namespace DualSense
             }
         }
 
-        // Same defaults InputDeviceGamepadDualSenseMac uses (see that file's constructor
-        // comment): match the engine's own untouched RawGamepadState defaults rather than invent
-        // new tuning for this backend.
+        // SDL delivers raw ADC values (unlike GameController, which pre-filters), so a rest-noise
+        // deadzone is required. XInput-canonical values for cross-platform feel parity:
+        // XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE / 32767, RIGHT / 32767, TRIGGER_THRESHOLD / 255.
         m_rawGamepadState.m_triggerMaximumValue = 1.0f;
-        m_rawGamepadState.m_triggerDeadZoneValue = 0.0f;
+        m_rawGamepadState.m_triggerDeadZoneValue = SdlAxisMath::TriggerDeadZone;
         m_rawGamepadState.m_thumbStickMaximumValue = 1.0f;
-        m_rawGamepadState.m_thumbStickLeftDeadZone = 0.0f;
-        m_rawGamepadState.m_thumbStickRightDeadZone = 0.0f;
+        m_rawGamepadState.m_thumbStickLeftDeadZone = SdlAxisMath::LeftThumbStickDeadZone;
+        m_rawGamepadState.m_thumbStickRightDeadZone = SdlAxisMath::RightThumbStickDeadZone;
 
         DualSenseTriggerEffectRequestBus::Handler::BusConnect(
             AzFramework::InputDeviceGamepad::IdForIndexN(GetInputDeviceIndex()));
