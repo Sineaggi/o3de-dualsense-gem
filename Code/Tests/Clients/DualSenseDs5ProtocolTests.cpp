@@ -118,6 +118,33 @@ namespace DualSenseTests
         EXPECT_EQ(std::memcmp(raw + 21, leftProbe.data(), 11), 0);
     }
 
+    // All the flag-isolation tests above start from an all-zero packet, so a bug that zeroed
+    // out unrelated bytes instead of leaving them alone could go unnoticed (zero already ==
+    // "untouched"). This test stages non-zero rumble bytes and a non-zero left block FIRST,
+    // then issues a right-trigger write, and confirms both survive byte-for-byte -- proving
+    // isolation from a genuinely non-zero baseline, not just from an all-zero one.
+    TEST_F(Ds5ProtocolFixture, SetTriggerBlock_PreservesNonZeroRumbleAndOtherTriggerBlock_FromNonZeroBaseline)
+    {
+        Ds5EffectsPacket packet;
+        packet.m_rumbleRight = 0x77;
+        packet.m_rumbleLeft = 0x88;
+
+        const Ds5TriggerBlock leftProbe = { { 0x22, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 } };
+        packet.SetLeftTriggerBlock(leftProbe);
+
+        const Ds5TriggerBlock rightProbe = { { 0x11, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 } };
+        packet.SetRightTriggerBlock(rightProbe);
+
+        AZ::u8 raw[47] = {};
+        std::memcpy(raw, &packet, 47);
+
+        EXPECT_EQ(raw[0], 0x0C); // both flags now set
+        EXPECT_EQ(raw[2], 0x77); // rumble right: untouched by trigger writes
+        EXPECT_EQ(raw[3], 0x88); // rumble left: untouched by trigger writes
+        EXPECT_EQ(std::memcmp(raw + 10, rightProbe.data(), 11), 0);
+        EXPECT_EQ(std::memcmp(raw + 21, leftProbe.data(), 11), 0); // left block survives the later right-trigger write
+    }
+
     // ---------------------------------------------------------------------------------------
     // CompileTriggerEffectRaw: byte vectors ported from pong's test_ds5_effects.cpp.
     // The pong reference builders take pre-quantized integers directly; here we drive them
@@ -228,6 +255,7 @@ namespace DualSenseTests
         effect.m_mode = TriggerEffectMode::MultiPositionVibration;
         effect.m_positionalValues[0] = 1.0f; // level 8 -> force 7
         effect.m_positionalValues[1] = 1.0f; // level 8 -> force 7
+        effect.m_frequency = 0.5f; // must be non-zero or this compiles to the literal Off block
 
         const Ds5TriggerBlock raw = CompileTriggerEffectRaw(effect);
         EXPECT_EQ(raw[0], 0x26);
@@ -286,14 +314,21 @@ namespace DualSenseTests
     // "beyond end_position" to also light up at end_strength (per pong's build_slope_feedback,
     // every zone after end_position holds at end_strength, which is exercised by the ported
     // 0,9,1,8 vector above and would otherwise make this test's mask harder to read).
+    //
+    // Input chosen as 5.125 (not 5.0): round(5.0 * 8) = 40, and an UNCLAMPED
+    // "(40 - 1) & 0x07" happens to equal 7 -- the same result the correct clamp-to-8 path
+    // produces ((8 - 1) & 0x07 = 7) -- so 5.0 is mod-8-neutral and would pass even with a
+    // missing clamp, silently defeating this regression test. round(5.125 * 8) = 41, and an
+    // unclamped "(41 - 1) & 0x07" = 0, which visibly differs from the correct clamped force of
+    // 7, so a missing/incorrect clamp is guaranteed to be caught here.
     TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_SlopeFeedback_OutOfRangeStrengths_ClampToLevel8NotLeftUnbounded)
     {
         TriggerEffect effect;
         effect.m_mode = TriggerEffectMode::SlopeFeedback;
         effect.m_startPosition = 1.0f; // zone 9
         effect.m_endPosition = 1.0f; // zone 9 (single-zone ramp)
-        effect.m_strength = 5.0f; // wildly out of [0,1]; must clamp to level 8 -> force 7
-        effect.m_endStrength = 5.0f;
+        effect.m_strength = 5.125f; // wildly out of [0,1]; must clamp to level 8 -> force 7 (see note above on why 5.0 was a blind spot)
+        effect.m_endStrength = 5.125f;
 
         const Ds5TriggerBlock raw = CompileTriggerEffectRaw(effect);
         EXPECT_EQ(raw[0], 0x21);
@@ -309,14 +344,80 @@ namespace DualSenseTests
     // Quantization edge cases: 0.0, 1.0, and a mid value, for each normalized domain.
     // ---------------------------------------------------------------------------------------
 
-    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_Feedback_ZeroStrength_IsOffShortcut_NoZonesActive)
+    // Matches the validated reference's caller-level redirect exactly
+    // (joy_adaptive_triggers_feedback, dualsense.cpp:119-122): strength == 0 compiles to the
+    // literal Off block (0x05, rest zero), not an empty-zoned 0x21 -- the empty-zoned 0x21 was
+    // an unverified firmware-equivalence assumption, never itself exercised on real hardware.
+    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_Feedback_ZeroStrength_CompilesToLiteralOffBlock)
     {
         TriggerEffect effect;
         effect.m_mode = TriggerEffectMode::Feedback;
         effect.m_startPosition = 0.0f;
-        effect.m_strength = 0.0f; // level 0 == guide's "off shortcut": no active zones
+        effect.m_strength = 0.0f;
 
-        const Ds5TriggerBlock want = { { 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0 } };
+        const Ds5TriggerBlock want = { { 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+        EXPECT_EQ(CompileTriggerEffectRaw(effect), want);
+    }
+
+    // Vibration's off-shortcut has two triggers, either alone: amplitude == 0, or
+    // frequency == 0 (joy_adaptive_triggers_vibration, dualsense.cpp:145-148). Covers both.
+    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_Vibration_ZeroAmplitude_CompilesToLiteralOffBlock)
+    {
+        TriggerEffect effect;
+        effect.m_mode = TriggerEffectMode::Vibration;
+        effect.m_startPosition = 0.0f;
+        effect.m_strength = 0.0f; // amplitude 0
+        effect.m_frequency = 0.5f; // non-zero: amplitude alone must still trigger Off
+
+        const Ds5TriggerBlock want = { { 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+        EXPECT_EQ(CompileTriggerEffectRaw(effect), want);
+    }
+
+    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_Vibration_ZeroFrequency_CompilesToLiteralOffBlock)
+    {
+        TriggerEffect effect;
+        effect.m_mode = TriggerEffectMode::Vibration;
+        effect.m_startPosition = 0.0f;
+        effect.m_strength = 1.0f; // non-zero: frequency alone must still trigger Off
+        effect.m_frequency = 0.0f;
+
+        const Ds5TriggerBlock want = { { 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+        EXPECT_EQ(CompileTriggerEffectRaw(effect), want);
+    }
+
+    // MultiPositionFeedback's off-shortcut: ALL zones quantize to 0
+    // (joy_adaptive_triggers_multi_feedback's have_positive_values scan, dualsense.cpp:157-172).
+    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_MultiPositionFeedback_AllZeroZones_CompilesToLiteralOffBlock)
+    {
+        TriggerEffect effect;
+        effect.m_mode = TriggerEffectMode::MultiPositionFeedback;
+        // m_positionalValues defaults to all zeros.
+
+        const Ds5TriggerBlock want = { { 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+        EXPECT_EQ(CompileTriggerEffectRaw(effect), want);
+    }
+
+    // MultiPositionVibration's off-shortcut has the same two triggers as single Vibration:
+    // all-zero zones, or zero frequency (joy_adaptive_triggers_multi_vibration,
+    // dualsense.cpp:191-206). Covers both, independently.
+    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_MultiPositionVibration_AllZeroZones_CompilesToLiteralOffBlock)
+    {
+        TriggerEffect effect;
+        effect.m_mode = TriggerEffectMode::MultiPositionVibration;
+        effect.m_frequency = 0.5f; // non-zero: all-zero zones alone must still trigger Off
+
+        const Ds5TriggerBlock want = { { 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
+        EXPECT_EQ(CompileTriggerEffectRaw(effect), want);
+    }
+
+    TEST_F(Ds5ProtocolFixture, CompileTriggerEffectRaw_MultiPositionVibration_ZeroFrequency_CompilesToLiteralOffBlock)
+    {
+        TriggerEffect effect;
+        effect.m_mode = TriggerEffectMode::MultiPositionVibration;
+        effect.m_positionalValues[3] = 1.0f; // non-zero zone: frequency alone must still trigger Off
+        effect.m_frequency = 0.0f;
+
+        const Ds5TriggerBlock want = { { 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } };
         EXPECT_EQ(CompileTriggerEffectRaw(effect), want);
     }
 

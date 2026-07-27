@@ -85,15 +85,26 @@ namespace DualSense
     //! Quantization from the gem's normalized [0,1] float fields to the protocol's integer
     //! domains (per the porting guide's validation ranges):
     //!   - positions  -> zone index 0-9:  round(position * 9),  clamped to [0, 9]
-    //!   - strengths  -> level 0-8:       round(value * 8),     clamped to [0, 8]  (0 = no
-    //!     force in that zone / zone-off shortcut, matching the guide's "0 = off shortcut")
+    //!   - strengths  -> level 0-8:       round(value * 8),     clamped to [0, 8]
     //!   - frequency  -> byte 0-255:      round(m_frequency * 255), clamped to [0, 255]
     //!
+    //! "0 = off shortcut": the guide's validation-range note is implemented here exactly as
+    //! the hardware-validated reference's caller layer implements it (pong's dualsense.cpp,
+    //! joy_adaptive_triggers_feedback/_vibration/_multi_feedback/_multi_vibration) -- a
+    //! zero-strength Feedback, a zero-amplitude-or-zero-frequency Vibration, or an
+    //! all-zero-zones MultiPositionFeedback/MultiPositionVibration (also zero-frequency for
+    //! the latter) compiles to the **literal Off block** (mode byte 0x05, rest zero), not an
+    //! empty-zoned 0x21/0x26. This was corrected after review flagged the original
+    //! empty-zoned-0x21/0x26 behavior as an unverified firmware-equivalence assumption never
+    //! exercised on real hardware, unlike the validated Off redirect.
+    //!
     //! Mode-specific notes (see .cpp for the full per-mode commentary):
-    //!   - Weapon's break strength has no "0 = off" shortcut (a weapon break degenerate to
-    //!     zero force is meaningless), so it is clamped to a minimum of 1 before the
-    //!     `strength - 1` byte is written; Weapon's start/end zones are additionally clamped
-    //!     into the guide's validated ranges (start 2-7, end start+1..8).
+    //!   - Weapon's break strength has no "0 = off" shortcut in this compiler (a weapon break
+    //!     degenerate to zero force is meaningless), so it is clamped to a minimum of 1 before
+    //!     the `strength - 1` byte is written; Weapon's start/end zones are additionally
+    //!     clamped into the guide's validated ranges (start 2-7, end start+1..8). Note: pong's
+    //!     caller layer redirects Weapon strength == 0 to Off too; this compiler's minimum-1
+    //!     clamp is a deliberate, narrower design choice for this mode only.
     //!   - MultiPositionVibration packs each zone's quantized amplitude with `& 0x07`, never
     //!     the upstream Godot draft's `(amplitude - 1) * 0x07` multiplication bug (which
     //!     corrupts neighboring zones' 3-bit fields for amplitude >= 3).

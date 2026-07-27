@@ -89,9 +89,11 @@ namespace DualSense
         //! applied to every zone from `startZone` to 9 inclusive ("...active at uniform
         //! strength" per the guide; m_endPosition is not used by these two modes -- the
         //! effect always runs to the end of trigger travel, matching pong's build_feedback /
-        //! build_vibration, which take only a single `position` parameter). `strength == 0`
-        //! is the guide's "0 = off shortcut": no zone is marked active at all, rather than
-        //! wrapping to the maximum force value via an unclamped `0 - 1`.
+        //! build_vibration, which take only a single `position` parameter). Callers are
+        //! expected to have already redirected `strength == 0` to the literal Off block (see
+        //! CompileTriggerEffectRaw) -- the `strength > 0` guard here is just defensive, so
+        //! this never wraps to the maximum force value via an unclamped `0 - 1` if called
+        //! directly with 0.
         AZStd::array<AZ::u8, ZoneCount> DenseZonesFrom(AZ::u8 startZone, AZ::u8 strength)
         {
             AZStd::array<AZ::u8, ZoneCount> zoneStrengths{};
@@ -103,6 +105,22 @@ namespace DualSense
                 }
             }
             return zoneStrengths;
+        }
+
+        //! True if any zone in `zoneStrengths` is active (level > 0). Used by the
+        //! MultiPosition* modes to decide whether to redirect to the literal Off block --
+        //! mirrors pong's `have_positive_values` scan in joy_adaptive_triggers_multi_feedback
+        //! / joy_adaptive_triggers_multi_vibration (dualsense.cpp).
+        bool AnyZoneActive(const AZStd::array<AZ::u8, ZoneCount>& zoneStrengths)
+        {
+            for (AZ::u8 level : zoneStrengths)
+            {
+                if (level > 0)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         //! Per-zone quantized levels straight from TriggerEffect::m_positionalValues, for the
@@ -177,6 +195,14 @@ namespace DualSense
         {
             const AZ::u8 zone = QuantizeZone(effect.m_startPosition);
             const AZ::u8 strength = QuantizeStrength(effect.m_strength);
+            // Matches the validated reference's caller-level redirect
+            // (joy_adaptive_triggers_feedback, dualsense.cpp:119-122): strength == 0 compiles
+            // to the literal Off block, not an empty-zoned 0x21.
+            if (strength == 0)
+            {
+                out[0] = EffectModeOff;
+                break;
+            }
             PackZonesFromStrengths(DenseZonesFrom(zone, strength), EffectModeFeedback, out);
             break;
         }
@@ -206,19 +232,49 @@ namespace DualSense
         {
             const AZ::u8 zone = QuantizeZone(effect.m_startPosition);
             const AZ::u8 strength = QuantizeStrength(effect.m_strength);
+            const AZ::u8 frequencyByte = QuantizeFrequencyByte(effect.m_frequency);
+            // Matches joy_adaptive_triggers_vibration (dualsense.cpp:145-148): amplitude == 0
+            // OR frequency == 0 both redirect to the literal Off block, not a stale/zero-freq
+            // 0x26 with an empty or meaningless zone mask.
+            if (strength == 0 || frequencyByte == 0)
+            {
+                out[0] = EffectModeOff;
+                break;
+            }
             PackZonesFromStrengths(DenseZonesFrom(zone, strength), EffectModeVibration, out);
-            out[9] = QuantizeFrequencyByte(effect.m_frequency);
+            out[9] = frequencyByte;
             break;
         }
 
         case TriggerEffectMode::MultiPositionFeedback:
-            PackZonesFromStrengths(ZonesFromPositionalValues(effect.m_positionalValues), EffectModeFeedback, out);
+        {
+            const auto zoneStrengths = ZonesFromPositionalValues(effect.m_positionalValues);
+            // Matches joy_adaptive_triggers_multi_feedback's have_positive_values scan
+            // (dualsense.cpp:157-172): all-zero zones redirect to the literal Off block.
+            if (!AnyZoneActive(zoneStrengths))
+            {
+                out[0] = EffectModeOff;
+                break;
+            }
+            PackZonesFromStrengths(zoneStrengths, EffectModeFeedback, out);
             break;
+        }
 
         case TriggerEffectMode::MultiPositionVibration:
-            PackZonesFromStrengths(ZonesFromPositionalValues(effect.m_positionalValues), EffectModeVibration, out);
-            out[9] = QuantizeFrequencyByte(effect.m_frequency);
+        {
+            const auto zoneStrengths = ZonesFromPositionalValues(effect.m_positionalValues);
+            const AZ::u8 frequencyByte = QuantizeFrequencyByte(effect.m_frequency);
+            // Matches joy_adaptive_triggers_multi_vibration (dualsense.cpp:191-206): all-zero
+            // amplitudes OR frequency == 0 both redirect to the literal Off block.
+            if (!AnyZoneActive(zoneStrengths) || frequencyByte == 0)
+            {
+                out[0] = EffectModeOff;
+                break;
+            }
+            PackZonesFromStrengths(zoneStrengths, EffectModeVibration, out);
+            out[9] = frequencyByte;
             break;
+        }
 
         case TriggerEffectMode::SlopeFeedback:
         {
