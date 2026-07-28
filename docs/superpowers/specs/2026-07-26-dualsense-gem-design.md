@@ -165,8 +165,8 @@ reflected settings struct (ScriptAutomation pattern); live toggles as CVars
 | Platform | Transport | Notes |
 |---|---|---|
 | **Mac** (first) | GameController.framework: `GCDualSenseGamepad` input, `GCDualSenseAdaptiveTrigger` triggers, CoreHaptics via `GCDeviceHaptics` for `SetVibration` (continuous events on left/right handle engines), `GCDeviceLight` lightbar | No raw HID, works over BT, `@available` guards (floor: macOS 11.3; slope effect 12.3+). Frameworks linked in `platform_mac.cmake` (Microphone pattern) |
-| **Windows** | hidapi via `o3de_fetch_content` (BSD-3 option of its triple license); raw `0x02`/`0x31` reports; VID/PID enumeration + hotplug | XInput never claims the pad, so the swapped impl owns a slot outright. Detect/document Steam Input contention |
-| **Linux** | Same hidapi protocol code over hidraw | Takes the device over from `hid-playstation` outputs (as SDL does). Ship a documented udev rule |
+| **Windows** | **SDL3 (joystick subsystem only)** via `o3de_fetch_content` (zlib license); `SDL_SendJoystickEffect` carries our 11-byte trigger blocks in the 47-byte effects packet; SDL owns transport framing (report IDs, BT CRC-32, enhanced mode), firmware quirks, enumeration/hotplug (GUID bus-type detection), input parsing incl. touchpad/sensors, rumble, LEDs. Hints pin the HIDAPI-PS5 driver only. | **AMENDED 2026-07-26** (was raw hidapi): the pong porting guide (~/pong/docs/dualsense-porting-guide.md) hardware-verified SDL's PS5 path over both transports, and our swap architecture makes the gem SDL's sole device owner (the guide's two-writers hazard doesn't apply — the engine reader is swapped out). hidapi remains the documented fallback if SDL3 packaging fights o3de_fetch_content. XInput never claims the pad; detect/document Steam Input contention. |
+| **Linux** | Same SDL3 backend (SDL claims hidraw for PS5, handling the kernel-driver coexistence the way every implementation does) | Ship a documented udev rule (needed regardless of library) |
 | Others | `Common/Unimplemented` stub | Gem gated by `PAL_TRAIT_DUALSENSE_SUPPORTED` in `PAL_<p>.cmake` |
 
 The Windows/Linux protocol layer (report parsing, effects-block builder,
@@ -185,7 +185,7 @@ Cut platform-first along risk boundaries; every phase ends hardware-demoable.
 - **Phase 2 — Trigger effect API.** `TriggerEffect` struct + buses, Mac backend via
   `GCDualSenseAdaptiveTrigger`, BehaviorContext reflection, Script Canvas demo. API frozen
   after this phase.
-- **Phase 3 — Windows backend.** hidapi fetch, enumeration, input parsing, output builder,
+- **Phase 3 — Windows backend.** SDL3 fetch (joystick-only build), device open/pump lifecycle, effects-packet builder feeding SDL_SendJoystickEffect,
   trigger compiler, BT + CRC32. Splits into 3a (USB input + rumble) / 3b (triggers + BT) if
   needed. *Done =* parity with Mac.
 - **Phase 4 — Linux backend.** Protocol reuse over hidraw; udev docs.

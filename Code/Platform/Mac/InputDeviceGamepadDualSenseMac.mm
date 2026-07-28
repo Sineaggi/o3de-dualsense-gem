@@ -306,6 +306,22 @@ namespace DualSense
         }
     }
 
+    void InputDeviceGamepadDualSenseMac::PlayHapticBuzz(float leftIntensity, float rightIntensity, float sharpness, float durationSeconds)
+    {
+        if (m_haptics)
+        {
+            m_haptics->PlayHapticBuzz(leftIntensity, rightIntensity, sharpness, durationSeconds);
+        }
+    }
+
+    void InputDeviceGamepadDualSenseMac::StopHaptics()
+    {
+        if (m_haptics)
+        {
+            m_haptics->StopHaptics();
+        }
+    }
+
     void InputDeviceGamepadDualSenseMac::SetAutoRecoil(Trigger trigger, bool enabled, float intensity, float sharpness)
     {
         // Plain config storage; ProcessWeaponFireEdge below (Phase 2.5, Task 2) is what

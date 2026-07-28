@@ -40,6 +40,8 @@ namespace DualSense
         // DualSenseHapticPulseRequestBus::Handler
         void PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness) override;
         void SetAutoRecoil(Trigger trigger, bool enabled, float intensity, float sharpness) override;
+        void PlayHapticBuzz(float leftIntensity, float rightIntensity, float sharpness, float durationSeconds) override;
+        void StopHaptics() override;
 
     private:
         //! Applies an already-clamped (and, if necessary, degraded) effect to a single

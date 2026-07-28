@@ -18,12 +18,28 @@ namespace DualSense
         static const AZ::EBusAddressPolicy AddressPolicy = AZ::EBusAddressPolicy::ById;
         using BusIdType = AzFramework::InputDeviceId;
 
-        //! One sharp transient kick. Intensities/sharpness normalized [0,1]; 0 intensity = skip that side.
+        //! One sharp transient kick. Intensities/sharpness normalized [0,1]; intensity ~0 stops
+        //! that side's cached transient player and starts nothing new (see PlayHapticBuzz below
+        //! for why this is phrased as "stops", not "skips": the same load-bearing clear-before-
+        //! check applies to both methods' zero-intensity path).
         virtual void PlayHapticPulse(float leftIntensity, float rightIntensity, float sharpness) = 0;
         //! Enable/disable hardware-synchronized auto-recoil for a trigger's Weapon-mode fire
         //! edge. Trigger::Both configures both triggers with the same enabled/intensity/
         //! sharpness values in one call.
         virtual void SetAutoRecoil(Trigger trigger, bool enabled, float intensity, float sharpness) = 0;
+        //! Sustained buzz on the voice-coil actuators. Duration clamped to (0, 30] seconds
+        //! (CoreHaptics ceiling). Shares the continuous actuator channel with rumble
+        //! (SetVibration): last writer wins per side (see the dualsense-porting-guide.md
+        //! "Contention with rumble emulation is deterministic: CoreHaptics wins" finding --
+        //! applied here between this gem's own two CoreHaptics-backed callers of the shared
+        //! continuous slot, on Mac). Intensity ~0 stops that side's cached player and starts
+        //! nothing new -- Stop() itself relies on this clear-before-check behavior, so it is not
+        //! a mere "skip" (no player is created for a ~0 call, but any existing cached player for
+        //! that side is torn down first).
+        virtual void PlayHapticBuzz(float leftIntensity, float rightIntensity, float sharpness, float durationSeconds) = 0;
+        //! Stops gem-issued haptics (transient pulses and buzzes) on both sides. Does not touch
+        //! trigger effects; a subsequent SetVibration re-owns the channel.
+        virtual void StopHaptics() = 0;
         virtual ~DualSenseHapticPulseRequests() = default;
     };
 
@@ -96,6 +112,15 @@ namespace DualSense
             AZ::BehaviorParameterOverrides setAutoRecoilSharpnessParam =
                 { "Sharpness", "Recoil kick sharpness [0,1]" };
 
+            AZ::BehaviorParameterOverrides playHapticBuzzLeftParam =
+                { "LeftIntensity", "Left actuator intensity [0,1]; 0 = skip that side" };
+            AZ::BehaviorParameterOverrides playHapticBuzzRightParam =
+                { "RightIntensity", "Right actuator intensity [0,1]; 0 = skip that side" };
+            AZ::BehaviorParameterOverrides playHapticBuzzSharpnessParam =
+                { "Sharpness", "Buzz sharpness [0,1]" };
+            AZ::BehaviorParameterOverrides playHapticBuzzDurationParam =
+                { "DurationSeconds", "Buzz duration in seconds, clamped to (0, 30]" };
+
             behaviorContext->EBus<DualSenseHapticPulseRequestBus>("DualSenseHapticPulseRequestBus")
                 ->Attribute(AZ::Script::Attributes::Module, "dualsense")
                 ->Attribute(AZ::Script::Attributes::Category, "DualSense")
@@ -109,6 +134,14 @@ namespace DualSense
                     &DualSenseHapticPulseRequestBus::Events::SetAutoRecoil,
                     { setAutoRecoilTriggerParam, setAutoRecoilEnabledParam, setAutoRecoilIntensityParam,
                       setAutoRecoilSharpnessParam })
+                ->Event(
+                    "PlayHapticBuzz",
+                    &DualSenseHapticPulseRequestBus::Events::PlayHapticBuzz,
+                    { playHapticBuzzLeftParam, playHapticBuzzRightParam, playHapticBuzzSharpnessParam,
+                      playHapticBuzzDurationParam })
+                ->Event(
+                    "StopHaptics",
+                    &DualSenseHapticPulseRequestBus::Events::StopHaptics)
                 ;
         }
     }

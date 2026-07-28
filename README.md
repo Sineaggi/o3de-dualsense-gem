@@ -31,7 +31,7 @@ Engine-only builds require `-DO3DE_EXTERNAL_SUBDIRS` because manifest-registered
 
 - `dualsense_rumble <left 0-1> <right 0-1> [slot]` — send vibration to a gamepad slot
 - `dualsense_lightbar <r 0-1> <g 0-1> <b 0-1> [slot]` — set light bar color for a gamepad slot
-- `dualsense_trigger <l2|r2|both> <mode> [slot]` — send adaptive trigger effect to a gamepad slot; modes: `off`, `feedback`, `weapon`, `vibration`, `slope`, `multifeedback`, `multivibration`
+- `dualsense_trigger <l2|r2|both> <mode> [slot]` — send adaptive trigger effect to a gamepad slot; modes: `off`, `feedback`, `weapon`, `vibration`, `autofire`, `slope`, `multifeedback`, `multivibration`
 - `dualsense_trigger_clear [slot]` — clear all trigger effects for a gamepad slot
 - `dualsense_debug_swap [slot]` — swap a gamepad slot to the debug implementation
 - `dualsense_debug_restore [slot]` — restore the platform-default implementation
@@ -108,3 +108,51 @@ end
 **Status:** Auto-recoil and pulse APIs are live on macOS (USB-verified, Bluetooth pending hardware pass). Bluetooth connectivity requires hardware pass before general availability — BT latency adds uncertainty to the trigger-edge synchronization that auto-recoil depends on.
 
 **Demo commands:** Console commands `dualsense_fire_demo` and `dualsense_fire_demo_off` provide one-line activation of a complete firing feel for testing and prototyping; `dualsense_pulse` sends isolated pulses for algorithm validation.
+
+## Test scene
+
+`Assets/DualSenseTest/` ships a keyboard-driven hardware test scene that exercises every scripted
+DualSense bus through a real `.inputbindings` asset — the per-binding input path itself (an
+Input component reading a bindings asset, rather than console commands), which was a deferred item
+from the phase 1 smoke matrix. It supersedes typing console commands by hand for hardware passes:
+hold the axis key, tap a mode key, feel it.
+
+**Setup (30 seconds):**
+
+1. Open any level in the Editor (the testbed project's default level is fine).
+2. Create an entity.
+3. Add an **Input** component (from the StartingPoint Input gem), and set its **Input to event
+   bindings** field to `dualsense_test.inputbindings`.
+4. Add a **Lua Script** component, and set its script to `DualSenseTest.lua`.
+5. Enter game mode (Ctrl+G) with a DualSense connected, and use the keys below. Console output
+   (`Debug.Log`) mirrors every action, including the live `OnWeaponTriggerFired` notification feed.
+
+**Key legend:**
+
+| Key(s)  | Action |
+|---------|--------|
+| `1`     | Trigger effect: feedback |
+| `2`     | Trigger effect: weapon |
+| `3`     | Trigger effect: vibration (classic buzz, freq 0.6) |
+| `4`     | Trigger effect: multi-position feedback |
+| `5`     | Trigger effect: slope feedback |
+| `6`     | Trigger effect: multi-position vibration |
+| `7`     | Trigger effect: autofire (repeated-fire vibration at the current swept frequency) |
+| `0`     | Trigger effect: off |
+| `Q`     | Axis = LEFT (L2) |
+| `E`     | Axis = RIGHT (R2) |
+| `W`     | Axis = BOTH (default) |
+| `R`     | Rumble for 1s, both motors (coexistence check: does the active trigger effect survive?). **Shares the continuous actuator slot with `Y`/`H` haptic buzz** -- starting a buzz while `R`'s 1s rumble is still running keeps the buzz alive (the deferred rumble-zero is skipped); starting `R` after a buzz replaces it with rumble immediately (last writer wins). |
+| `L`     | Cycle light bar color: red -> green -> blue -> white (coexistence check) |
+| `T`     | Haptic tap, both sides |
+| `Y`     | Haptic buzz, both sides, 1.5s. Shares the continuous actuator slot with `R` rumble -- see `R`'s entry above |
+| `U`     | Haptic stop |
+| `G`     | Haptic tap, LEFT side only |
+| `H`     | Haptic buzz, RIGHT side only, 1.0s. Shares the continuous actuator slot with `R` rumble -- see `R`'s entry above |
+| `[`     | Autofire frequency sweep down by 0.02 (re-applies autofire immediately, logs new value) |
+| `]`     | Autofire frequency sweep up by 0.02 (re-applies autofire immediately, logs new value) |
+
+The `[` / `]` sweep exists specifically to lock in the repeated-fire feel empirically: press `7` to
+start autofire at the assumed 25 Hz mapping (0.098 normalized), then tap `[` / `]` while the trigger
+is held to find the value that actually feels like 25 Hz on real hardware, and record it in
+`docs/hardware-smoke.md`.
