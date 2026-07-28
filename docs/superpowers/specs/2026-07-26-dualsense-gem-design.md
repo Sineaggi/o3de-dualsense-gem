@@ -83,6 +83,30 @@ What O3DE provides today, per the 2026-07-26 research pass:
   macOS 12.3+), `GCDeviceHaptics` → CoreHaptics engines per locality (works over BT),
   `GCDeviceLight` for the lightbar, `GCMotion` for IMU.
 
+### Apple's normalized→raw quantization (reverse-engineered 2026-07-27, instruction level)
+
+`GCDualSenseAdaptiveTrigger`'s normalized parameters are scaled NOT in GameController.framework
+(which only clamps to [0,1]) but in `/System/Library/HIDPlugins/ServicePlugins/
+DualSenseHIDServicePlugin.plugin`. Disassembly of `-[DualSenseHIDServicePlugin
+setAdaptiveTriggerWithStartPosition:resistiveStrength:mode:frequency:forIndex:]` (macOS 26.5.2,
+arm64e) shows, with `mov w8, #0x437f0000` decoding to exactly 255.0f:
+
+| Parameter | Apple's operation | Our compiler (`DualSenseDs5Protocol.cpp`) | Match |
+|---|---|---|---|
+| frequency | `round(f × 255)` (`fmul`+`frinta`) → block byte 9 | `QuantizeClamped(f, 255, 255)`, `std::round` | ✅ identical |
+| amplitude/strength | `round(a × 8) − 1` → 3-bit field | `QuantizeStrength` then `(v − 1) & 0x07` | ✅ identical |
+| start position | `round(p × 9)` clamped [0,9] | `QuantizeZone(p)` | ✅ identical |
+| zero freq/amplitude | substitutes mode `Off` (0x05) entirely | zero → literal Off block (Task 2 fix round) | ✅ identical |
+
+Mode enum → HID byte confirmed: 0→0x05, 1→0x21, 2→0x25, 3→0x26, 4→0x22; frequency lands at
+trigger-block byte 9 (`strb w9, [x2, #0x9]`). Corroborated independently by Nielk1's
+TriggerEffectGenerator Apple adapter ("only simple rounding was needed").
+
+**Consequence for our API:** the normalized `TriggerEffect::m_frequency` is *transport-consistent* —
+0.098 is ~25 Hz on BOTH the Apple-native and SDL/raw backends. The cross-backend frequency
+divergence feared during phase 3a does not exist, and no Hz-denominated API change is warranted.
+(`frinta` = round-half-away-from-zero = `std::round` for our non-negative domain.)
+
 Protocol references: SDL3 `SDL_hidapi_ps5.c`, Linux `hid-playstation.c`, nondebug/dualsense,
 flok/pydualsense, Nielk1's trigger-effect factory gist.
 

@@ -6,7 +6,11 @@ set(FILES
     Tests/Clients/DualSenseSystemComponentTests.cpp
     Tests/Clients/DualSenseSlotTrackerTests.cpp
     Tests/Clients/DualSenseTriggerEffectTests.cpp
+    Tests/Clients/DualSenseDs5ProtocolTests.cpp
     Tests/Clients/DualSenseTriggerMappingTests.cpp
     Tests/Clients/DualSenseScriptReflectionTests.cpp
     Tests/Clients/DualSenseTriggerFireDetectorTests.cpp
+    Tests/Clients/DualSenseSdlBackendProbeTests.cpp
+    Tests/Clients/DualSenseBackendSelectionTests.cpp
+    Tests/Clients/DualSenseSdlAxisTests.cpp
 )

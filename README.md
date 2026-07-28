@@ -18,6 +18,16 @@ See docs/hardware-smoke.md for smoke-test checklist.
 2. Enable it for a project: `scripts/o3de.sh enable-gem -gn DualSense -pp <project-path>`
 3. Configure + build your project as usual.
 
+## Quick launch (Mac)
+
+    scripts/launch-testbed.sh            # launch the testbed Editor (native backend)
+    scripts/launch-testbed.sh -s         # launch with the SDL backend selected
+    scripts/launch-testbed.sh -b -a -t   # rebuild, process assets, run tests, then launch
+    scripts/launch-testbed.sh --help     # all options
+
+Launched via `open` (launchd-owned). After changing anything under `Assets/`, use `-a` —
+never rely on hot-reload with a live Editor (known engine heap-corruption bug in Lua reload).
+
 ## Build & test (Mac)
 
     cd ~/Source/o3de
@@ -156,3 +166,89 @@ The `[` / `]` sweep exists specifically to lock in the repeated-fire feel empiri
 start autofire at the assumed 25 Hz mapping (0.098 normalized), then tap `[` / `]` while the trigger
 is held to find the value that actually feels like 25 Hz on real hardware, and record it in
 `docs/hardware-smoke.md`.
+
+## Backends
+
+DualSense input and haptics on macOS can use one of two backend implementations. The `dualsense_backend`
+console variable selects between them at runtime (no restart required).
+
+### Backend selection
+
+**Console command:** `dualsense_backend native|sdl`
+
+**Default:** `native` (per-platform, using GameController.framework on macOS).
+
+**Effective immediately** — the cvar callback tears down the current backend (releasing all held
+gamepads, restoring slots to the platform default) and activates the new one. Switching back and
+forth mid-session is safe; all gamepad slots are re-claimed when the new backend starts.
+
+### Capability matrix
+
+| Capability | Native | SDL3 (3.4.12) |
+|---|---|---|
+| Gamepad input (buttons, sticks, triggers) | ✓ | ✓ |
+| Rumble (two-motor vibration) | ✓ | ✓ via `SDL_RumbleJoystick` |
+| Light bar color control | ✓ | ✓ via `SDL_SetJoystickLED` |
+| **Adaptive trigger effects** | ✓ Full: Feedback, Weapon, Vibration, SlopeFeedback, MultiPositionFeedback, MultiPositionVibration | ✓ Full: same modes via raw PS5 HID compiler + `SDL_SendJoystickEffect` |
+| Haptic pulse/buzz (transient haptic feedback) | ✓ CoreHaptics (crisp, sharp taps) | ⚠ Rumble emulation (short rumble bursts; lower fidelity than CoreHaptics) |
+| Weapon trigger fire detection (`OnWeaponTriggerFired` event) | ✓ | ✗ SDL has no adaptive-trigger status query |
+| Autofire / per-shot recoil | ✓ Fires on trigger-break via CoreHaptics | ✗ No fire detection → no callback firing (see Weapon fire detection above) |
+| Trigger feel parity vs. native | — | ⚠ Measurable divergence: the native backend uses Apple's normalized API (`GCDualSenseAdaptiveTrigger`); the SDL backend uses the raw PS5 protocol directly. Both feel correct but are not identical. The test scene (`Assets/DualSenseTest/`) allows empirical per-mode comparison. |
+
+### Build flags
+
+**PAL trait** `PAL_TRAIT_DUALSENSE_SDL_BACKEND`:
+- `TRUE` on macOS, Windows, Linux (SDL3 build is available on these platforms).
+- `FALSE` on Android, iOS (the gem module itself is not compiled on these platforms; the cvar and SDL-backend code do not exist at all).
+
+**Compile definition** `DUALSENSE_SDL_BACKEND_ENABLED`: defined when `PAL_TRAIT_DUALSENSE_SDL_BACKEND` is `TRUE`. Guards all SDL-specific source files (`Code/Source/Clients/Sdl/*.cpp`).
+
+**CMake dependency**: SDL3 (pinned to `release-3.4.12` tag) is fetched and linked as a private dependency of `DualSense.Private.Object` only when the PAL trait is true.
+
+### SDL version pinned
+
+**Version:** `release-3.4.12` (2026-07-01). This is the latest stable SDL3 at the time this backend was implemented. A future update to a newer SDL3 release is straightforward — update the tag/hash in `3rdParty/FindSDL3.cmake` and re-run the configure step.
+
+### macOS A/B testing intent
+
+Both backends can coexist in the same process (GameController.framework and SDL3 managing different physical pads, or the same pad switching ownership at runtime). This allows:
+
+1. **Sequential A/B comparison** on a single pad: switch the `dualsense_backend` cvar between `native` and `sdl` across multiple runs on the same hardware to compare feel/behavior side by side. Alternatively, run two pads concurrently—one via the gem's SDL backend, the second via the stock engine's native GameController.framework—to isolate any cross-writer interference.
+2. **Gradual rollout** or **fallback path**: deploy the SDL backend alongside the native one and use the cvar to switch between them in the field if issues arise, without recompiling or restarting.
+3. **Platform-validation path**: the native backend is macOS-only (GameController.framework); SDL is cross-platform. Validating the same input/effects contract on SDL before rolling out to Linux/Windows reduces platform-specific regressions.
+
+### Windows / Linux enablement
+
+The SDL backend can be enabled on Windows and Linux by flipping the `PAL_TRAIT_DUALSENSE_SDL_BACKEND` flag in each platform's PAL file (e.g., `Code/Platform/Windows/PAL_windows.cmake`). The C++ source code (`Code/Source/Clients/Sdl/`) is already portable across these platforms — it compiles clean on any platform with SDL3 available, even if not deployed yet.
+
+### Bluetooth prerequisites (macOS, SDL backend)
+
+The SDL backend talks to the DualSense over raw HID (SDL3's HIDAPI-based PS5 driver), which macOS gates
+behind the **Input Monitoring** privacy permission (TCC) — a check the native GameController backend
+never needs, since it does not use HID directly. Before relying on `dualsense_backend sdl` over
+Bluetooth:
+
+- **Input Monitoring permission.** The first time the sdl backend activates (`dualsense_backend sdl`),
+  it checks (`IOHIDCheckAccess`) whether this permission has been granted; the check itself never
+  triggers a prompt. macOS may prompt the user the first time SDL actually attempts to open a matching
+  HID device, or it may silently deny with no prompt at all depending on prior history for this binary —
+  don't assume a prompt will appear. If the console logs `DualSense (SDL): Input Monitoring permission
+  has not been granted...`, grant it manually (add/enable the Editor or the built app), then relaunch:
+  **System Settings > Privacy & Security > Input Monitoring** on macOS 13 (Ventura) and later, or
+  **System Preferences > Security & Privacy > Privacy > Input Monitoring** on macOS 11–12 (this gem's
+  floor is 11.3).
+- **TCC rebinds on rebuild.** macOS's TCC grants are tied to the binary's code signature/identity, not
+  just its path. A dev (ad-hoc-signed, frequently-relinked) Editor or launcher binary can silently lose
+  its Input Monitoring grant after a rebuild, even though nothing in the privacy settings above changed
+  — if a previously-working BT session suddenly logs the not-granted warning after a rebuild, re-grant
+  the permission (may require removing and re-adding the entry, not just re-checking it) rather than
+  assuming a code regression.
+- **Pairing.** Put the DualSense into Bluetooth pairing mode by holding **PS + Create** until the light
+  bar starts flashing rapidly, then pair it from macOS's Bluetooth settings. **Unplug the USB cable**
+  while testing over Bluetooth — a DualSense that is both plugged in and paired can present as two
+  ambiguous connections at once, making it unclear which transport is actually being exercised.
+- **GUID first byte is ground truth.** This backend logs each connection's transport via the
+  `SDL_GUID`'s first byte (`DualSense (SDL): joystick N transport byte 0x03/0x05 (USB/Bluetooth)`,
+  emitted by `DualSenseSdlRuntime::LogTransport`) — `0x03` = USB, `0x05` = Bluetooth. Trust this log
+  line over assumptions about which cable/pairing state you think is active; it is the actual value SDL
+  derived from the device, not what you intended to test.

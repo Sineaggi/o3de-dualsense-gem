@@ -3,6 +3,7 @@
 
 #include "DualSenseDebugGamepadImpl.h"
 
+#include <Clients/DualSenseBackendSelection.h>
 #include <DualSense/DualSenseTypeIds.h>
 #include <DualSense/DualSenseTriggerEffects.h>
 #include <DualSense/DualSenseHaptics.h>
@@ -18,6 +19,29 @@
 
 namespace DualSense
 {
+    namespace
+    {
+        // BarrierInput's cvar-callback pattern (see OnBarrierConnectionCVarChanged in
+        // Gems/BarrierInput/Code/Source/BarrierInputSystemComponent.cpp): the callback itself
+        // only broadcasts a notification -- DualSenseSystemImplMac (Task 3) is what actually
+        // reacts, by calling GetDualSenseBackendSelection() from its
+        // DualSenseBackendCVarNotificationBus::Handler override.
+        void OnDualSenseBackendCVarChanged(const AZ::CVarFixedString&)
+        {
+            DualSenseBackendCVarNotificationBus::Broadcast(&DualSenseBackendCVarNotifications::OnDualSenseBackendCVarChanged);
+        }
+    } // namespace
+
+    // Consumed by DualSenseSystemImplMac (Phase 3a Task 3): selects between the native
+    // per-platform backend and the SDL3 joystick backend (Phase 3a Task 1 fetched/linked SDL3
+    // behind PAL_TRAIT_DUALSENSE_SDL_BACKEND). Default "native" preserves today's behavior
+    // bit-for-bit -- with this cvar left at its default, DualSenseSystemImplMac's Sdl branch is
+    // never entered and no SDL call is ever made (see DualSenseSystemImpl_Mac.mm).
+    AZ_CVAR(AZ::CVarFixedString, dualsense_backend, "native", OnDualSenseBackendCVarChanged, AZ::ConsoleFunctorFlags::DontReplicate,
+        "Selects the DualSense input backend: 'native' (per-platform, default) or 'sdl' (SDL3 joystick, Phase 3a+). "
+        "Changing this at runtime live-switches backends (restores all slots, tears down the old stack, brings up "
+        "the new one) on platforms that consume it (Mac, Phase 3a Task 3).");
+
     AZ_COMPONENT_IMPL(DualSenseSystemComponent, "DualSenseSystemComponent",
         DualSenseSystemComponentTypeId);
 
@@ -252,11 +276,15 @@ namespace DualSense
                 // preset above is a fine buzz at 0.6, wrong feel for repeated fire). Per
                 // ~/pong/docs/dualsense-porting-guide.md, the hardware-validated reference
                 // implementation's repeated-fire feel is trigger vibration at 25 Hz RAW firmware
-                // units (0-255 range). Apple's GameController API takes a normalized [0,1]
-                // frequency parameter; this gem assumes a linear mapping (Hz / 255), giving
-                // 25 / 255 ~= 0.098. This mapping is UNVERIFIED on hardware -- it is a starting
-                // point, not a validated constant. The phase 2.6 test scene's frequency-sweep
-                // keys ([ / ]) exist specifically to lock the feel empirically.
+                // units (0-255 range), i.e. normalized 25/255 ~= 0.098.
+                //
+                // CONFIRMED 2026-07-27 (previously an assumed linear mapping): the normalized ->
+                // raw conversion was reverse-engineered at instruction level from Apple's
+                // DualSenseHIDServicePlugin -- round(f * 255), ties away from zero -- so 0.098 is
+                // 25 Hz on the Apple-native backend AND through our raw/SDL compiler, which uses
+                // the identical formula (see spec section 3, "Apple's normalized->raw
+                // quantization"). Hardware feel verdict same date: correct full-auto cadence.
+                // The test scene's sweep keys ([ / ]) remain for per-title tuning, not calibration.
                 effect.m_mode = TriggerEffectMode::Vibration;
                 effect.m_startPosition = 0.2f;
                 effect.m_strength = 0.9f;

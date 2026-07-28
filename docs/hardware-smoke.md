@@ -83,6 +83,14 @@ With a DualSense connected via the testbed Editor (USB; BT deferred).
 
 ## Phase 2.6 — autofire feel + keyboard test scene
 
+**2026-07-27: NATIVE backend over BLUETOOTH — PASS (real DualSense, BT link).** Full trigger-mode
+matrix (feedback/weapon/vibration/multifeedback/slope/multivibration/autofire) applied and felt
+correct over Bluetooth via the test scene; OnWeaponTriggerFired events streamed on trigger breaks.
+This closes the native-path "BT deferred" caveat carried since Phase 1 for trigger effects and
+fire detection. Still open: BT rumble/lightbar/haptics spot-checks, and the SDL-backend BT leg
+(Windows/Linux transport validation) — see Phase 3a section.
+
+
 With a DualSense connected via the testbed Editor (USB; BT deferred). Use the keyboard test scene
 (`Assets/DualSenseTest/dualsense_test.inputbindings` + `DualSenseTest.lua` — see README "Test
 scene" for setup) for all items below; this is the per-binding input path deferred from the
@@ -101,12 +109,13 @@ Phase 1 matrix, now checkable.
 
 **Autofire feel + frequency lock (the central Phase 2.6 deliverable):**
 
-- [ ] `7` autofire at the default 0.098 (assumed 25 Hz) -> feels like repeated-fire thumps, not a
-      fine buzz
-- [ ] `[` / `]` sweep the frequency in 0.02 steps while holding the trigger pulled -> find the
-      value that feels like the reference implementation's 25 Hz repeated fire
-- [ ] **Record the locked-in frequency here:** _______________ (replaces the 0.098 assumption in
-      `DualSenseSystemComponent.cpp`'s `CreateTriggerEffectForMode("autofire")` once confirmed)
+- [x] `7` autofire at 0.098 (25 Hz, mapping now proven) -> repeated-fire thumps (2026-07-27)
+- [x] `[` / `]` sweep available for per-title tuning; default confirmed correct, no sweep needed
+      to calibrate an unknown mapping (superseded by the instruction-level RE)
+- [x] **Locked-in frequency: 0.098 (== 25 Hz) — CONFIRMED 2026-07-27.** Two independent lines of
+      evidence: (1) user hardware verdict "feels about right" for full-auto cadence; (2) the
+      normalized->raw mapping was reverse-engineered at instruction level (round(f*255), see spec
+      §3) proving 0.098 == 25 Hz on BOTH backends, so the shipped default needed no change.
 
 **Coexistence (rumble/lightbar concurrent with an active trigger effect):**
 
@@ -158,3 +167,106 @@ gamepad bindings elsewhere:
 - [ ] No spurious/held-key event spam while a key is held down but not repeatedly pressed
       (confirms dead-zone/event-edge handling in the bindings pipeline, standing in for the
       deferred gamepad stick-deadzone item since the same pipeline code handles both)
+
+## Phase 3a — SDL backend (macOS A/B)
+
+**2026-07-27: SDL BACKEND OVER BLUETOOTH — PASS (real DualSense, transport byte 0x05 logged).**
+Backend activated cleanly, pad detected and claimed via SDL, trigger modes 1-7 applied and felt
+correct through the gem's raw byte compiler -> SDL_SendJoystickEffect -> SDL BT framing/CRC.
+This hardware-validates the exact transport stack the Windows/Linux backends will use.
+Finding from the same session: editor fly-cam DRIFT under sdl backend — root-caused to zero
+stick deadzones (correct for pre-filtered GameController input, wrong for SDL raw ADC values);
+fix: XInput-canonical deadzones in the SDL impl (see deadzone-fix commit). Re-verify no-drift
+after the fix.
+
+
+All items unchecked. Run the test scene/console commands with `dualsense_backend sdl` active
+(set via console command or `+dualsense_backend sdl` command-line flag before launching). This
+section validates the SDL3 backend implementation and verifies coexistence with the stock
+engine's GameController.framework. Use the same test scene (`Assets/DualSenseTest/`) and
+console commands as the Phase 2.6 items above, selecting the SDL backend at the top of each test.
+
+**Backend selection / flag purity:**
+
+- [ ] Default (`dualsense_backend` left at `native`): confirm via Console/log that no SDL3
+      initialization occurs and behavior is bit-for-bit identical to pre-Phase-3a (no SDL_Init
+      cost, 2.6 behavior unchanged).
+- [ ] `dualsense_backend sdl` with a DualSense connected: native GameController slot is released
+      ("restoring platform default" log), SDL backend activates, monitor detects the same pad
+      within a tick or two ("controller detected, taking over gamepad slot N" log). GUID bus byte
+      logged: `0x03` USB, `0x05` Bluetooth (confirm match vs. actual connection type).
+- [ ] `dualsense_backend native` while sdl is active: reverse transition (SDL slot restored, SDL
+      backend deactivated, native GameController reclaims the pad within a tick or two).
+- [ ] Rapid back-and-forth switching (`sdl`/`native`/`sdl`/...) several times: no crash, no
+      duplicate slot claims, no leaked gamepad handles (watch for matching "closing gamepad
+      handle" debug logs per activation).
+
+**Input parity vs. native (buttons/sticks/triggers-as-digital-input):**
+
+- [ ] All 14 digital buttons (face, D-pad, L1/R1/L3/R3, Start/Select) report identically to native.
+- [ ] Both sticks: X and Y axes match native (confirm Y axis inversion correction works on real
+      hardware; SDL's raw convention is down-positive, this backend inverts it).
+- [ ] Both analog triggers (as continuous 0-1 input) match native range and feel.
+
+**Adaptive triggers via the raw PS5 HID compiler (`SDL_SendJoystickEffect`):**
+
+- [ ] Scene re-run: all 7 modes (Off, Feedback, Weapon, Vibration, SlopeFeedback,
+      MultiPositionFeedback, MultiPositionVibration) feel correct over SDL.
+- [ ] Feel parity notes: record any perceptible differences from the native backend per mode.
+      The compiler intentionally uses raw PS5 protocol (not Apple's normalized API), so divergence
+      is expected and measurable (see README's "Trigger feel parity" matrix item).
+- [ ] Per-trigger targeting (L2 vs R2 vs Both) isolates correctly; explicit clears between steps.
+- [ ] `dualsense_trigger_clear` returns to neutral cleanly from every mode.
+
+**Rumble (via `SDL_RumbleJoystick`) and light bar (via `SDL_SetJoystickLED`):**
+
+- [ ] `dualsense_rumble 1 0` / `0 1` / `0 0`: produces felt rumble, stops on `0 0`, does NOT
+      auto-timeout (confirms indefinite duration holds on real firmware).
+- [ ] `dualsense_lightbar`: sets color correctly; compare hue/brightness vs. native for any
+      visible discrepancy.
+- [ ] Rumble + active trigger effect coexist without interference (confirms the porting guide's
+      "trigger effects survive rumble/LED writes" finding holds through SDL's driver too).
+
+**Haptic-pulse/buzz degradation (rumble-emulation, NOT CoreHaptics):**
+
+- [ ] `dualsense_pulse`: produces felt rumble burst (not silence); confirm degrade path reaches
+      hardware and the degrade-notice log appears once per gamepad instance, not per call.
+- [ ] Feel quality: compare vs. native CoreHaptics tap/buzz. Expected: felt like ordinary rumble,
+      not a crisp tap. Record how different it actually feels.
+- [ ] Weapon fire edge (`OnWeaponTriggerFired` event): confirm NEVER fires under SDL backend
+      (expected -- no adaptive-trigger status API exists on this path; this is documented in the
+      README Capability matrix).
+
+**GameController coexistence (two-writers scenario):**
+
+- [ ] Pad A on SDL backend, Pad B left on stock engine's native GameController.framework
+      simultaneously connected: confirm no input/effect interference between the two (this is the
+      actual "two writers" scenario — SDL and GameController.framework both live in-process). Record
+      any surprises.
+- [ ] Single pad with `dualsense_backend sdl` active: verify the pad does NOT also feed a stock
+      GameController gamepad slot (no duplicate input on two engine slots — the 2.6 playerIndex
+      forensics predict stock GC impls may re-claim a playerIndex-Unset pad; record what actually
+      happens).
+- [ ] Disconnect pad A (sdl-owned) mid-effect: no crash, "restoring platform default" log, clean
+      teardown; reconnect: monitor re-detects and re-takes-over within a tick or two.
+
+**Idle-stability and Bluetooth (if pairing available):**
+
+BT prerequisites (see README "Bluetooth prerequisites (macOS, SDL backend)" for the full
+explanation): grant **Input Monitoring** to the Editor/app — **System Settings > Privacy &
+Security > Input Monitoring** on macOS 13+, or **System Preferences > Security & Privacy >
+Privacy > Input Monitoring** on macOS 11-12 (this gem's floor is 11.3) — before/when the console
+logs the not-granted warning. The first sdl activation may prompt, or may silently deny with no
+prompt at all; dev (ad-hoc-signed) binaries can lose this grant on rebuild (TCC is tied to code
+identity, not just path) even with no config change, so re-check it if a previously-working BT
+session starts warning again after a rebuild.
+Pair via **PS + Create** held until the light bar flashes rapidly, and **unplug USB** while testing
+BT to avoid a dual-connection ambiguity (plugged-in + paired at once). The GUID first byte in the
+transport log (`0x03` USB / `0x05` Bluetooth) is the ground truth for which link is actually active
+— trust it over assumptions about cable/pairing state.
+
+- [ ] Idle-stability: SDL backend active, no input/effects applied, let it sit for several minutes
+      (confirm no spurious log spam, no phantom inputs, clean idling).
+- [ ] Bluetooth if available: repeat all items above over Bluetooth; GUID byte should be `0x05`
+      (vs. `0x03` USB). Record any Bluetooth-specific behavior differences vs. USB.
+- [ ] First sdl activation over BT: permission warn absent (or granted), pad enumerates, GUID logs 05
