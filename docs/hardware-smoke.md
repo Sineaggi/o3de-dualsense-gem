@@ -270,3 +270,57 @@ transport log (`0x03` USB / `0x05` Bluetooth) is the ground truth for which link
 - [ ] Bluetooth if available: repeat all items above over Bluetooth; GUID byte should be `0x05`
       (vs. `0x03` USB). Record any Bluetooth-specific behavior differences vs. USB.
 - [ ] First sdl activation over BT: permission warn absent (or granted), pad enumerates, GUID logs 05
+
+## Phase 3c — Windows (first-run)
+
+Windows enablement (`DualSenseSystemImplWindows`, `Code/Platform/Windows/DualSenseSystemImpl_Windows.cpp`)
+is **UNTESTED** as of this commit — written and reviewed entirely on macOS, with no Windows
+toolchain, SDK, or hardware pass available. Every item below is a genuine unknown, not a
+formality; expect to find and fix real problems while running this section for the first time.
+See the Phase 3c report (`.superpowers/sdd/phase-3c-windows-report.md`) for the full list of
+assumptions this implementation makes that could not be verified from macOS.
+
+All items unchecked.
+
+- [ ] **SDL3 fetch/build succeeds on Windows.** Highest-risk unknown in this whole phase: the
+      pinned `release-3.4.12` tag (`3rdParty/FindSDL3.cmake`) has never been configured/built on
+      Windows from this repo. Confirm `FetchContent_MakeAvailable(SDL3)` completes, the HIDAPI
+      assertion in `FindSDL3.cmake` passes (i.e. `SDL_JOYSTICK_HIDAPI` really is `1` in the
+      generated `SDL_build_config.h.intermediate` on a Windows configure, not just on macOS), and
+      `3rdParty::SDL3` resolves to a real, linkable `SDL3-static` target.
+- [ ] Gem builds clean on Windows: `DualSense.Private.Object`, `DualSense`, `DualSense.Tests`,
+      `DualSense.Editor` all link with no unresolved externals. If link errors point at SDL3's
+      Windows joystick/HIDAPI object files, start with `Code/Platform/Windows/platform_windows.cmake`
+      (`winmm`/`imm32`/`version`/`setupapi` are linked there today; see that file's header comment
+      for why those four and not the rest of SDL3's Windows base-dependency list).
+- [ ] Gem loads: Editor/launcher log shows
+      `DualSense (Windows): this platform has exactly one backend (SDL3); the dualsense_backend
+      cvar is accepted but informational only here...` at startup (constructor-time log), with
+      `dualsense_backend` left at its default (`native`).
+- [ ] Pad detected + slot claimed: with a real DualSense connected (USB first), log shows
+      `DualSense (SDL): controller detected, taking over gamepad slot N` within a tick or two of
+      plugging in, under the DEFAULT cvar value (`native`) — i.e. confirm the "both cvar values
+      mean SDL on Windows" design decision actually produces a working pad with zero configuration,
+      not just when `dualsense_backend sdl` is explicitly set.
+- [ ] Trigger modes felt: all 7 adaptive-trigger modes (Off, Feedback, Weapon, Vibration,
+      SlopeFeedback, MultiPositionFeedback, MultiPositionVibration) via the raw PS5 HID compiler +
+      `SDL_SendJoystickEffect` feel correct — same console commands as the Phase 3a macOS section.
+- [ ] Rumble (`dualsense_rumble`) via `SDL_RumbleJoystick`: felt, stops cleanly, does not
+      auto-timeout.
+- [ ] LED (`dualsense_lightbar`) via `SDL_SetJoystickLED`: sets color correctly.
+- [ ] Disconnect/reconnect: unplug mid-session — no crash, `DualSense (SDL): controller left slot
+      N, restoring platform default` logs; reconnect — monitor re-detects and re-claims within a
+      tick or two, no leaked handles, no duplicate slot claims.
+- [ ] `dualsense_backend` cvar round-trip: setting it to `sdl` explicitly, then back to `native`,
+      each logs the "no effect, this platform only has the SDL3 backend" informational message
+      exactly once per change (not once per tick), and the pad keeps working uninterrupted through
+      both console commands (no teardown/reattach should be visible in the logs, since the target
+      stack never actually changes on this platform).
+- [ ] Retry-after-failure: if SDL3 activation ever fails at startup (e.g. `SDL_Init` returns
+      false), confirm re-issuing `dualsense_backend native` or `dualsense_backend sdl` at the
+      console actually retries `SetupSdl()` (per the retry-on-failure design mirrored from
+      `DualSenseSystemImpl_Mac.mm`) rather than silently no-op'ing.
+- [ ] Known-absent on Windows (confirm these stay absent, don't half-work): no CoreHaptics-based
+      HD haptics (macOS-native-only — Windows has no CoreHaptics equivalent wired up), and no
+      `OnWeaponTriggerFired` / autofire (SDL has no adaptive-trigger status query on any platform,
+      same limitation the macOS SDL backend already documents in the README capability matrix).

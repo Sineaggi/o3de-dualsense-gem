@@ -5,5 +5,5 @@
 #      ../Include/Windows/DualSenseWindows.h
 
 set(FILES
-    ../Common/Unimplemented/DualSenseSystemImpl_Unimplemented.cpp
+    DualSenseSystemImpl_Windows.cpp
 )

@@ -219,7 +219,36 @@ Both backends can coexist in the same process (GameController.framework and SDL3
 
 ### Windows / Linux enablement
 
-The SDL backend can be enabled on Windows and Linux by flipping the `PAL_TRAIT_DUALSENSE_SDL_BACKEND` flag in each platform's PAL file (e.g., `Code/Platform/Windows/PAL_windows.cmake`). The C++ source code (`Code/Source/Clients/Sdl/`) is already portable across these platforms — it compiles clean on any platform with SDL3 available, even if not deployed yet.
+**Windows (Phase 3c):** `DualSenseSystemImpl::Create()` on Windows now stands up the SDL3 backend
+(`Code/Platform/Windows/DualSenseSystemImpl_Windows.cpp`), replacing the passive Unimplemented
+stub every earlier phase used. Windows has no native (first-party) DualSense backend the way macOS
+has GameController.framework, so it runs SDL3 unconditionally: **both** `dualsense_backend native`
+(the default) and `dualsense_backend sdl` bring up the same SDL3 stack on this platform — the cvar
+is accepted but informational-only here (a log line at activation makes this explicit). This means
+a Windows user who never touches the cvar still gets a working gem out of the box.
+
+**Windows status: UNTESTED as of this commit.** Written and reviewed entirely on macOS, with no
+Windows toolchain, SDK, or DualSense-over-Windows hardware pass available to verify it. See
+`docs/hardware-smoke.md`'s "Phase 3c — Windows (first-run)" section for what still needs to be
+run before trusting this on real Windows hardware, and the Phase 3c report
+(`.superpowers/sdd/phase-3c-windows-report.md`) for the specific unverified assumptions (SDL3
+fetch/build on Windows, HIDAPI joystick driver behavior, and link-library completeness — see
+`Code/Platform/Windows/platform_windows.cmake`).
+
+Expected to work on Windows (same SDL3 code path already hardware-verified on macOS via
+`dualsense_backend sdl`): standard gamepad input, adaptive trigger effects via the raw PS5 HID
+compiler, rumble, and light bar color, all through SDL3.
+
+Expected NOT to work on Windows (macOS-native-only, no equivalent wired up on this platform):
+CoreHaptics-based HD haptics (buzz/tap fidelity — Windows degrades to rumble emulation, same as
+macOS's own SDL backend already does), and weapon-fire detection / autofire
+(`OnWeaponTriggerFired` — SDL has no adaptive-trigger status query on any platform).
+
+**Linux:** still uses the passive Unimplemented stub (untouched by Phase 3c) — a separate future
+task. Linux can be enabled by flipping the `PAL_TRAIT_DUALSENSE_SDL_BACKEND` flag in
+`Code/Platform/Linux/PAL_linux.cmake` (already `TRUE`) and adding a Linux counterpart of
+`DualSenseSystemImpl_Windows.cpp`. The underlying C++ (`Code/Source/Clients/Sdl/`) is already
+portable — it compiles clean on any platform with SDL3 available.
 
 ### Bluetooth prerequisites (macOS, SDL backend)
 
