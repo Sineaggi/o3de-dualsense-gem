@@ -18,6 +18,11 @@ See docs/hardware-smoke.md for smoke-test checklist.
 2. Enable it for a project: `scripts/o3de.sh enable-gem -gn DualSense -pp <project-path>`
 3. Configure + build your project as usual.
 
+Works against either engine flavor: a source-built O3DE checkout, or an installed/downloaded O3DE
+SDK. `3rdParty/FindSDL3.cmake` detects which one it's running under and fetches SDL3 accordingly
+(the engine's own package system when available, a plain stock-CMake `FetchContent` fallback
+otherwise) — no extra steps needed either way.
+
 ## Quick launch (Mac)
 
     scripts/launch-testbed.sh            # launch the testbed Editor (native backend)
@@ -233,7 +238,13 @@ Windows toolchain, SDK, or DualSense-over-Windows hardware pass available to ver
 run before trusting this on real Windows hardware, and the Phase 3c report
 (`.superpowers/sdd/phase-3c-windows-report.md`) for the specific unverified assumptions (SDL3
 fetch/build on Windows, HIDAPI joystick driver behavior, and link-library completeness — see
-`Code/Platform/Windows/platform_windows.cmake`).
+`Code/Platform/Windows/platform_windows.cmake`). Note: the report's top risk item ("SDL3 fetch +
+configure succeeds on Windows at all") specifically flagged `o3de_fetch_content` as untested outside
+macOS; that function is only defined for source-built engines and is unconditionally unavailable on
+an installed/downloaded O3DE SDK regardless of platform (fixed in `3rdParty/FindSDL3.cmake` — see
+git history for `fix(cmake): SDL3 fetch works on installed engines`). The remaining open risk is
+narrower: whether the fetch/build itself behaves correctly under an actual Windows toolchain, not
+whether the correct CMake machinery is reachable.
 
 Expected to work on Windows (same SDL3 code path already hardware-verified on macOS via
 `dualsense_backend sdl`): standard gamepad input, adaptive trigger effects via the raw PS5 HID

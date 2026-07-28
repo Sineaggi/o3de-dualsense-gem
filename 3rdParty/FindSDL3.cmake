@@ -24,14 +24,97 @@ block()
     # release-3.4.12 is the latest stable SDL3 tag as of this writing (published 2026-07-01). Pinned to a tagged
     # release (not a branch) so the fetch is reproducible; hash was computed locally by downloading the tarball with
     # curl and running `shasum -a 256` on it before writing this file.
-    o3de_fetch_content(SDL3
-        VERSION "release-3.4.12"
-        LICENSE "zlib"
-        URL "https://github.com/libsdl-org/SDL/archive/refs/tags/release-3.4.12.tar.gz"
-        URL_HASH "b68381f06a7580e63400b3b6eb547ec57d8c3ebde70f9f40e0aba530ba05da27"
-        GIT "https://github.com/libsdl-org/SDL.git"
-        GIT_HASH "release-3.4.12"
-    )
+    set(sdl3_version "release-3.4.12")
+    set(sdl3_license "zlib")
+    set(sdl3_url "https://github.com/libsdl-org/SDL/archive/refs/tags/release-3.4.12.tar.gz")
+    set(sdl3_url_hash "b68381f06a7580e63400b3b6eb547ec57d8c3ebde70f9f40e0aba530ba05da27")
+    set(sdl3_git_repo "https://github.com/libsdl-org/SDL.git")
+    set(sdl3_git_tag "release-3.4.12")
+
+    # o3de_fetch_content (cmake/3rdPartyPackages.cmake) is only defined when this file is being processed as
+    # part of a SOURCE-built engine's own configure (it's pulled in transitively via cmake/LYPython.cmake, which
+    # is only included from the engine root CMakeLists.txt itself). On an installed/downloaded O3DE SDK, that
+    # root CMakeLists.txt is never processed -- the SDK ships a generated, much smaller cmake/ surface -- so
+    # `o3de_fetch_content` simply does not exist there and a project that registers this gem against such an
+    # engine fails to configure at all ("unknown command o3de_fetch_content"). Detect that case with a plain
+    # `if(COMMAND ...)` and fall back to driving stock CMake FetchContent directly; this keeps the exact same
+    # pinned version/hash and produces the same SDL3 target either way. O3DE_FORCE_STOCK_FETCHCONTENT is a
+    # manual escape hatch (pass -DO3DE_FORCE_STOCK_FETCHCONTENT=TRUE) to exercise/verify the fallback path even
+    # on a source-built engine where o3de_fetch_content is otherwise available.
+    if(COMMAND o3de_fetch_content AND NOT O3DE_FORCE_STOCK_FETCHCONTENT)
+        o3de_fetch_content(SDL3
+            VERSION "${sdl3_version}"
+            LICENSE "${sdl3_license}"
+            URL "${sdl3_url}"
+            URL_HASH "${sdl3_url_hash}"
+            GIT "${sdl3_git_repo}"
+            GIT_HASH "${sdl3_git_tag}"
+        )
+    else()
+        # Stock-CMake fallback for installed/downloaded engines. Mirrors the parts of o3de_fetch_content that
+        # matter for correctness here: DOWNLOAD_EXTRACT_TIMESTAMP on modern CMake (avoids the CMP0135 warning
+        # and non-deterministic extracted timestamps), a URL-first attempt with a GIT_REPOSITORY/GIT_TAG
+        # fallback if the URL can't be fetched, and the same license/version/source notification
+        # o3de_fetch_content prints (that notification is a real feature -- users are meant to see what 3rd
+        # party code and license they're pulling in -- so the fallback must not silently drop it).
+        include(FetchContent)
+
+        set(fc_args)
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+            list(APPEND fc_args DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        endif()
+
+        # Probe the URL by downloading it into the build tree ourselves (re-using it by hash if already
+        # present, same idea as o3de_fetch_content's download cache) so we know up front whether to hand
+        # FetchContent_Declare a URL or fall back to GIT_REPOSITORY -- FetchContent_Declare itself has no
+        # "try this, then that" behavior, so the decision has to be made before declaring.
+        set(sdl3_probe_file "${CMAKE_BINARY_DIR}/downloads/SDL3/${sdl3_url_hash}")
+        get_filename_component(sdl3_probe_dir "${sdl3_probe_file}" DIRECTORY)
+        file(MAKE_DIRECTORY "${sdl3_probe_dir}")
+
+        set(sdl3_url_ok FALSE)
+        if(EXISTS "${sdl3_probe_file}")
+            file(SHA256 "${sdl3_probe_file}" sdl3_existing_hash)
+            if(sdl3_existing_hash STREQUAL sdl3_url_hash)
+                set(sdl3_url_ok TRUE)
+            else()
+                file(REMOVE "${sdl3_probe_file}")
+            endif()
+        endif()
+
+        if(NOT sdl3_url_ok)
+            file(DOWNLOAD "${sdl3_url}" "${sdl3_probe_file}"
+                EXPECTED_HASH "SHA256=${sdl3_url_hash}"
+                STATUS sdl3_download_status
+                TLS_VERIFY ON)
+            list(GET sdl3_download_status 0 sdl3_download_code)
+            if(sdl3_download_code EQUAL 0)
+                set(sdl3_url_ok TRUE)
+            else()
+                list(GET sdl3_download_status 1 sdl3_download_error)
+                message(WARNING
+                    "DualSense gem: URL download of SDL3 failed (${sdl3_download_error}); falling back to "
+                    "git clone of ${sdl3_git_repo}#${sdl3_git_tag}")
+                file(REMOVE "${sdl3_probe_file}")
+            endif()
+        endif()
+
+        if(sdl3_url_ok)
+            list(APPEND fc_args
+                URL "file://${sdl3_probe_file}"
+                URL_HASH "SHA256=${sdl3_url_hash}")
+        else()
+            list(APPEND fc_args
+                GIT_REPOSITORY "${sdl3_git_repo}"
+                GIT_TAG "${sdl3_git_tag}")
+        endif()
+
+        message(STATUS
+            "Using package SDL3 ${sdl3_version} (${sdl3_license} license), source: ${sdl3_url} "
+            "[o3de_fetch_content unavailable on this engine flavor -- using stock CMake FetchContent]")
+
+        FetchContent_Declare(SDL3 ${fc_args})
+    endif()
 
     # Part 2: Set the build settings and trigger the actual execution of the downloaded CMakeLists.txt file.
     # Note that CMAKE_ARGS does NOT WORK for FetchContent_*, only ExternalProject.
@@ -60,7 +143,15 @@ block()
     # "3rd party code doesn't have to pass our warnings policy" treatment the built targets already get.
     # Scoped to this block(): CMAKE_C_FLAGS here is a plain (non-CACHE) variable, so it automatically
     # reverts to the real CACHE value once this block() exits; nothing to restore.
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
+    #
+    # This is specifically a macOS/clang workaround (the dead DARWIN branch only matters to
+    # CheckPTHREAD's Unix `-lpthread` probe, which is only reached on APPLE/Unix builds in the first
+    # place). `-w` is a GCC/Clang flag; MSVC does not recognize it (its equivalent is `/w`), so gate this
+    # to APPLE rather than applying it globally, which would either be a no-op or an actual bad-flag
+    # error depending on the generator/toolchain on Windows.
+    if(APPLE)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
+    endif()
 
     # DualSense only needs SDL3's joystick (and, for phase 5, sensor) subsystems -- everything else SDL3 can build
     # (audio/video/render/gpu/camera/haptic/power/etc.) is dead weight for this gem and would drag in system
@@ -126,26 +217,53 @@ block()
     # on a real hardware-fetched configure.
     FetchContent_GetProperties(SDL3 BINARY_DIR sdl3_binary_dir_for_hidapi_check)
     set(sdl3_build_config_intermediate "${sdl3_binary_dir_for_hidapi_check}/CMakeFiles/SDL_build_config.h.intermediate")
-    if (NOT EXISTS "${sdl3_build_config_intermediate}")
-        message(FATAL_ERROR
-            "DualSense gem: expected SDL3's generated build-config header at "
-            "'${sdl3_build_config_intermediate}' but it does not exist. SDL3's CMakeLists.txt "
-            "internal layout may have changed since release-3.4.12 (the tag this gem is pinned "
-            "to) -- update the HIDAPI assertion in 3rdParty/FindSDL3.cmake to match the new "
-            "location before proceeding.")
+
+    # Portability hardening: the hardcoded path above was only ever confirmed against this repo's actual
+    # macOS/Ninja Multi-Config build tree. Other generators/platforms may lay out SDL3's generated
+    # build-config header differently (e.g. a single-config generator, or a future SDL3 CMakeLists.txt
+    # restructuring). Rather than hard-fail configure over a path guess, search a couple of plausible
+    # generated locations under the SDL3 binary dir before giving up. file(GLOB_RECURSE) with a literal
+    # (non-wildcard) filename still recurses through every subdirectory of the base path and matches that
+    # exact filename wherever it lands, which is exactly what's needed here.
+    if(NOT EXISTS "${sdl3_build_config_intermediate}")
+        foreach(candidate_name "SDL_build_config.h.intermediate" "SDL_build_config.h")
+            file(GLOB_RECURSE sdl3_build_config_candidates "${sdl3_binary_dir_for_hidapi_check}/${candidate_name}")
+            if(sdl3_build_config_candidates)
+                list(GET sdl3_build_config_candidates 0 sdl3_build_config_intermediate)
+                break()
+            endif()
+        endforeach()
     endif()
-    file(STRINGS "${sdl3_build_config_intermediate}" sdl3_hidapi_define
-        REGEX "^#define[ \t]+SDL_JOYSTICK_HIDAPI[ \t]+1[ \t]*$")
-    if (NOT sdl3_hidapi_define)
-        message(FATAL_ERROR
-            "DualSense gem: the fetched SDL3 (release-3.4.12) was NOT built with the HIDAPI "
-            "joystick driver (SDL_JOYSTICK_HIDAPI is not defined =1 in "
-            "'${sdl3_build_config_intermediate}'). Without HIDAPI, SDL3 has no PS5 driver: "
-            "SDL_SendJoystickEffect (adaptive triggers) and SDL_GetGamepadTypeForID's PS5 "
-            "detection will silently degrade or misbehave at runtime instead of failing -- this "
-            "gem depends on both. Check the SDL_HIDAPI/SDL_JOYSTICK options set above in this "
-            "file, and this platform's HIDAPI prerequisites (see the fetched SDL3 tree's own "
-            "docs/README-hidapi.md).")
+
+    if(NOT EXISTS "${sdl3_build_config_intermediate}")
+        # Genuinely couldn't find the header anywhere under the SDL3 binary dir. This most likely means
+        # SDL3's CMakeLists.txt internal layout changed, or this is an untested platform/generator
+        # combination -- but a missing diagnostic header is not itself evidence that HIDAPI is actually
+        # disabled. WARN instead of FATAL_ERROR so an otherwise-working build on an untested
+        # platform/generator isn't blocked by this assertion; the tradeoff is that a real HIDAPI
+        # misconfiguration on such a platform would only show up at runtime instead of at configure time.
+        message(WARNING
+            "DualSense gem: could not locate SDL3's generated build-config header under "
+            "'${sdl3_binary_dir_for_hidapi_check}' (looked for SDL_build_config.h.intermediate and "
+            "SDL_build_config.h). Skipping the HIDAPI build-time assertion -- SDL3's CMakeLists.txt "
+            "internal layout may differ on this platform/generator from what was verified on macOS/Ninja "
+            "Multi-Config. This does NOT mean HIDAPI is actually missing; if PS5 detection or adaptive "
+            "triggers misbehave at runtime, check the SDL_HIDAPI/SDL_JOYSTICK options set above in this "
+            "file manually.")
+    else()
+        file(STRINGS "${sdl3_build_config_intermediate}" sdl3_hidapi_define
+            REGEX "^#define[ \t]+SDL_JOYSTICK_HIDAPI[ \t]+1[ \t]*$")
+        if (NOT sdl3_hidapi_define)
+            message(FATAL_ERROR
+                "DualSense gem: the fetched SDL3 (release-3.4.12) was NOT built with the HIDAPI "
+                "joystick driver (SDL_JOYSTICK_HIDAPI is not defined =1 in "
+                "'${sdl3_build_config_intermediate}'). Without HIDAPI, SDL3 has no PS5 driver: "
+                "SDL_SendJoystickEffect (adaptive triggers) and SDL_GetGamepadTypeForID's PS5 "
+                "detection will silently degrade or misbehave at runtime instead of failing -- this "
+                "gem depends on both. Check the SDL_HIDAPI/SDL_JOYSTICK options set above in this "
+                "file, and this platform's HIDAPI prerequisites (see the fetched SDL3 tree's own "
+                "docs/README-hidapi.md).")
+        endif()
     endif()
 
     set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
