@@ -60,7 +60,7 @@ namespace DualSense
 
         //! `trigger` is L2 or R2 (never Both -- each physical trigger fires its own edge
         //! independently).
-        virtual void OnWeaponTriggerFired(Trigger trigger) {}
+        virtual void OnWeaponTriggerFired([[maybe_unused]] Trigger trigger) {}
         virtual ~DualSenseTriggerNotifications() = default;
     };
 

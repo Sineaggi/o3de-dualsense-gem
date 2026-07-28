@@ -144,12 +144,22 @@ block()
     # Scoped to this block(): CMAKE_C_FLAGS here is a plain (non-CACHE) variable, so it automatically
     # reverts to the real CACHE value once this block() exits; nothing to restore.
     #
-    # This is specifically a macOS/clang workaround (the dead DARWIN branch only matters to
-    # CheckPTHREAD's Unix `-lpthread` probe, which is only reached on APPLE/Unix builds in the first
-    # place). `-w` is a GCC/Clang flag; MSVC does not recognize it (its equivalent is `/w`), so gate this
-    # to APPLE rather than applying it globally, which would either be a no-op or an actual bad-flag
-    # error depending on the generator/toolchain on Windows.
-    if(APPLE)
+    # This is NOT macOS-specific: O3DE compiles with warnings-as-errors on every host -- `/WX` on MSVC
+    # (Configurations_msvc.cmake) and `-Werror` on clang/gcc (Configurations_clang.cmake /
+    # Configurations_gcc.cmake) -- and that flag leaks into SDL's configure-time probes
+    # (check_include_file / check_c_source_compiles). On Windows that silently fails SDL's dinput.h /
+    # xinput.h detection, which disables the DINPUT and XINPUT joystick backends while SDL's
+    # unconditionally-enabled RAWINPUT backend then trips its own `#error SDL_JOYSTICK_RAWINPUT requires
+    # SDL_JOYSTICK_DINPUT || SDL_JOYSTICK_XINPUT`; the macOS pthread probe fails the same way. So the
+    # suppression has to cover every compiler, not just APPLE (Linux -- also a supported platform -- hits
+    # the -Werror variant too). Key on the COMPILER, not the OS: `-w` is the GCC/Clang disable-all-
+    # warnings flag; MSVC (and clang-cl, for which CMake also sets MSVC=TRUE) uses `/W0`. Appending `/W0`
+    # after O3DE's `/W4` wins (last flag wins), and at warning level 0 there is nothing left for `/WX` to
+    # promote to an error, so no `/WX-` is needed. This is only the configure-probe half; the real SDL3
+    # targets get O3DE_COMPILE_OPTION_DISABLE_WARNINGS applied by o3de_fixup_fetchcontent_targets below.
+    if(MSVC)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W0")
+    else()
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
     endif()
 
