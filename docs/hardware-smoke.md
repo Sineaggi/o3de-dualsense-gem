@@ -109,12 +109,13 @@ Phase 1 matrix, now checkable.
 
 **Autofire feel + frequency lock (the central Phase 2.6 deliverable):**
 
-- [ ] `7` autofire at the default 0.098 (assumed 25 Hz) -> feels like repeated-fire thumps, not a
-      fine buzz
-- [ ] `[` / `]` sweep the frequency in 0.02 steps while holding the trigger pulled -> find the
-      value that feels like the reference implementation's 25 Hz repeated fire
-- [ ] **Record the locked-in frequency here:** _______________ (replaces the 0.098 assumption in
-      `DualSenseSystemComponent.cpp`'s `CreateTriggerEffectForMode("autofire")` once confirmed)
+- [x] `7` autofire at 0.098 (25 Hz, mapping now proven) -> repeated-fire thumps (2026-07-27)
+- [x] `[` / `]` sweep available for per-title tuning; default confirmed correct, no sweep needed
+      to calibrate an unknown mapping (superseded by the instruction-level RE)
+- [x] **Locked-in frequency: 0.098 (== 25 Hz) — CONFIRMED 2026-07-27.** Two independent lines of
+      evidence: (1) user hardware verdict "feels about right" for full-auto cadence; (2) the
+      normalized->raw mapping was reverse-engineered at instruction level (round(f*255), see spec
+      §3) proving 0.098 == 25 Hz on BOTH backends, so the shipped default needed no change.
 
 **Coexistence (rumble/lightbar concurrent with an active trigger effect):**
 

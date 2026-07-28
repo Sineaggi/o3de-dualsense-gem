@@ -276,11 +276,15 @@ namespace DualSense
                 // preset above is a fine buzz at 0.6, wrong feel for repeated fire). Per
                 // ~/pong/docs/dualsense-porting-guide.md, the hardware-validated reference
                 // implementation's repeated-fire feel is trigger vibration at 25 Hz RAW firmware
-                // units (0-255 range). Apple's GameController API takes a normalized [0,1]
-                // frequency parameter; this gem assumes a linear mapping (Hz / 255), giving
-                // 25 / 255 ~= 0.098. This mapping is UNVERIFIED on hardware -- it is a starting
-                // point, not a validated constant. The phase 2.6 test scene's frequency-sweep
-                // keys ([ / ]) exist specifically to lock the feel empirically.
+                // units (0-255 range), i.e. normalized 25/255 ~= 0.098.
+                //
+                // CONFIRMED 2026-07-27 (previously an assumed linear mapping): the normalized ->
+                // raw conversion was reverse-engineered at instruction level from Apple's
+                // DualSenseHIDServicePlugin -- round(f * 255), ties away from zero -- so 0.098 is
+                // 25 Hz on the Apple-native backend AND through our raw/SDL compiler, which uses
+                // the identical formula (see spec section 3, "Apple's normalized->raw
+                // quantization"). Hardware feel verdict same date: correct full-auto cadence.
+                // The test scene's sweep keys ([ / ]) remain for per-title tuning, not calibration.
                 effect.m_mode = TriggerEffectMode::Vibration;
                 effect.m_startPosition = 0.2f;
                 effect.m_strength = 0.9f;
