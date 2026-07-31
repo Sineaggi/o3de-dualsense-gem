@@ -22,13 +22,14 @@
         "Linux"
     ],
     "icon_path": "preview.png",
-    "requirements": "A Sony DualSense controller. macOS 11.3+ is fully hardware-validated. Windows (SDL backend) builds clean and detects a real controller over USB; the full effects smoke pass is pending. Linux builds but is untested.",
+    "requirements": "A Sony DualSense controller. macOS 11.3+ is fully hardware-validated. Windows (SDL backend) builds clean and detects a real controller over USB. The full effects smoke pass is pending, and Linux builds but is untested.",
     "documentation_url": "https://github.com/Sineaggi/o3de-dualsense-gem#readme",
     "dependencies": [
     ],
     "repo_uri": "https://raw.githubusercontent.com/Sineaggi/o3de-dualsense-gem/main",
     "compatible_engines": [
-        "o3de>=2.7.0"
+        "o3de>=2.7.0",
+        "o3de-sdk>=2.7.0"
     ],
     "engine_api_dependencies":[
     ]

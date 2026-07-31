@@ -56,12 +56,20 @@ jobs:
           test -f LICENSE_MIT.TXT
           python3 - <<'EOF'
           import json
-          g = json.load(open("gem.json"))
+          raw = open("gem.json").read()
+          # O3DE's CMake JSON reader (O3DEJson.cmake) expands file content
+          # unquoted, so CMake list-splits it at semicolons and the parse fails
+          # mid-file. A ';' anywhere in gem.json breaks every engine configure.
+          assert ";" not in raw, "gem.json must not contain ';' (CMake list-split breaks O3DE's JSON reader)"
+          g = json.loads(raw)
           assert g["gem_name"] == "DualSense", g["gem_name"]
           for field in ("version", "license", "origin_url", "documentation_url", "repo_uri"):
               assert g.get(field), f"gem.json field {field!r} is empty"
-          assert g["compatible_engines"], "compatible_engines is empty"
-          print("gem.json OK:", g["gem_name"], g["version"])
+          engines = g["compatible_engines"]
+          assert any(e.startswith("o3de>") or e.startswith("o3de=") for e in engines), engines
+          assert any(e.startswith("o3de-sdk") for e in engines), \
+              "installed-SDK engines are named o3de-sdk; without an o3de-sdk entry every Project Manager user is blocked"
+          print("gem.json OK:", g["gem_name"], g["version"], engines)
           EOF
 
   linux-sdk:
