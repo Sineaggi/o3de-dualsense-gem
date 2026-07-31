@@ -2,9 +2,9 @@
 
 // Pure DualSense DS5 wire-protocol packet builders. No SDL includes, no platform code --
 // this header (and its .cpp) build unconditionally on every platform, regardless of
-// PAL_TRAIT_DUALSENSE_SDL_BACKEND. Semantics ported from
-// /Users/claytonwalker/pong/dualsense/src/ds5_effects.{h,cpp} (hardware-validated Godot
-// GDExtension reference, itself derived from Godot draft PR #111682 / Nielk1's DualSense
+// PAL_TRAIT_DUALSENSE_SDL_BACKEND. Semantics ported from "pong", the gem author's
+// hardware-validated Godot GDExtension reference implementation (ds5_effects.{h,cpp};
+// unpublished, itself derived from Godot draft PR #111682 / Nielk1's DualSense
 // trigger-effect gist, MIT), with the two known upstream bugs fixed rather than ported --
 // see CompileTriggerEffectRaw below. Field/layout reference:
 // https://controllers.fandom.com/wiki/Sony_DualSense#Output_Reports

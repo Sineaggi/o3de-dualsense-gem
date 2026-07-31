@@ -4,9 +4,9 @@
 
 #include <cstring>
 
-// Byte vectors in this file are ported from the hardware-validated reference implementation's
-// own unit tests: /Users/claytonwalker/pong/dualsense/tests/test_ds5_effects.cpp (which exercises
-// /Users/claytonwalker/pong/dualsense/src/ds5_effects.cpp). See per-test comments for which
+// Byte vectors in this file are ported from the hardware-validated pong reference
+// implementation's own unit tests (test_ds5_effects.cpp, exercising ds5_effects.cpp --
+// see DualSenseDs5Protocol.h for what "pong" is). See per-test comments for which
 // pong vector each one mirrors, and DualSenseDs5Protocol.h for the normalized-float ->
 // protocol-integer quantization this gem adds on top (the pong reference takes pre-quantized
 // ints directly).

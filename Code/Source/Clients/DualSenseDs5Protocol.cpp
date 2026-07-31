@@ -6,8 +6,8 @@
 
 // See DualSenseDs5Protocol.h for the overall porting-source citation and quantization
 // summary. Per-mode layouts below mirror the porting guide's "11-byte trigger effect
-// blocks" table, itself ported from
-// /Users/claytonwalker/pong/dualsense/src/ds5_effects.cpp's build_* functions.
+// blocks" table, itself ported from the pong reference's ds5_effects.cpp build_*
+// functions (see the header for what "pong" is).
 
 namespace DualSense
 {
