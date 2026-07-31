@@ -68,7 +68,16 @@ block()
         # present, same idea as o3de_fetch_content's download cache) so we know up front whether to hand
         # FetchContent_Declare a URL or fall back to GIT_REPOSITORY -- FetchContent_Declare itself has no
         # "try this, then that" behavior, so the decision has to be made before declaring.
-        set(sdl3_probe_file "${CMAKE_BINARY_DIR}/downloads/SDL3/${sdl3_url_hash}")
+        # The probe file must keep the URL's archive extension: ExternalProject (CMake <= 3.31 at least)
+        # picks the extraction method from the file:// URL's filename, and a bare-hash name fails with
+        # "Do not know how to extract" (first hit on the Linux SDK CI job, which is the only environment
+        # that reaches this fallback).
+        string(REGEX MATCH "\\.(tar\\.(gz|bz2|xz)|tgz|tbz2|txz|zip|7z)$" sdl3_url_ext "${sdl3_url}")
+        if(NOT sdl3_url_ext)
+            message(FATAL_ERROR "DualSense gem: cannot determine archive extension from SDL3 URL '${sdl3_url}'; "
+                "the stock-FetchContent fallback needs it so CMake knows how to extract the download.")
+        endif()
+        set(sdl3_probe_file "${CMAKE_BINARY_DIR}/downloads/SDL3/${sdl3_url_hash}${sdl3_url_ext}")
         get_filename_component(sdl3_probe_dir "${sdl3_probe_file}" DIRECTORY)
         file(MAKE_DIRECTORY "${sdl3_probe_dir}")
 
