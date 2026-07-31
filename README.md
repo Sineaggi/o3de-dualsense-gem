@@ -292,3 +292,7 @@ Bluetooth:
   emitted by `DualSenseSdlRuntime::LogTransport`) — `0x03` = USB, `0x05` = Bluetooth. Trust this log
   line over assumptions about which cable/pairing state you think is active; it is the actual value SDL
   derived from the device, not what you intended to test.
+
+## License
+
+Dual-licensed under [Apache-2.0](LICENSE_APACHE2.TXT) or [MIT](LICENSE_MIT.TXT), at your option — the same terms as O3DE itself.
