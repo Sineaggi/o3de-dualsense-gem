@@ -120,9 +120,18 @@ jobs:
         # Retried because 3rdParty package downloads (cloudfront) intermittently
         # fail with SSL connect errors; already-downloaded packages are reused,
         # so a retry converges instead of starting over.
+        #
+        # -fclang-abi-compat=17: the SDK's prebuilt libs export auto-NTTP
+        # template symbols (e.g. GetO3deTypeId for CVarFixedString's
+        # fixed_string<char, 256>) with the pre-LLVM-18 mangling (IcLm256E).
+        # The runner's clang-18 defaults to the newer Itanium template-param-decl
+        # mangling (IcTnDaLm256E), so the gem's references don't resolve against
+        # libAzCore.so at link time. Verified by extracting the nightly deb and
+        # grepping both manglings in its libAzCore.so exports.
         run: |
           attempt=0
-          until cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config"; do
+          until cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config" \
+              -DCMAKE_CXX_FLAGS="-fclang-abi-compat=17"; do
             attempt=$((attempt + 1))
             if [ "$attempt" -ge 3 ]; then
               echo "Configure failed after $attempt attempts"
