@@ -99,7 +99,7 @@ jobs:
           curl -fL -o o3de_latest.deb https://o3debinaries.org/development/Latest/Linux/o3de_latest.deb
           echo "$(cut -d' ' -f1 o3de_latest.deb.sha256)  o3de_latest.deb" | sha256sum -c -
           sudo apt-get update
-          sudo apt-get install -y ./o3de_latest.deb ninja-build libudev-dev
+          sudo apt-get install -y ./o3de_latest.deb ninja-build libudev-dev clang-17
           rm o3de_latest.deb
 
       - name: Register engine
@@ -128,6 +128,14 @@ jobs:
         # mangling (IcTnDaLm256E), so the gem's references don't resolve against
         # libAzCore.so at link time. Verified by extracting the nightly deb and
         # grepping both manglings in its libAzCore.so exports.
+        #
+        # CC/CXX pin clang-17, whose *default* mangling matches the SDK
+        # (verified with llvm@17 locally) — the abi-compat flag alone did not
+        # survive O3DE's flag plumbing into the gem's compile lines in round 6,
+        # and under clang-17 it is a no-op kept as a second line of defense.
+        env:
+          CC: clang-17
+          CXX: clang++-17
         run: |
           attempt=0
           until cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config" \
