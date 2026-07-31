@@ -117,7 +117,20 @@ jobs:
           "$ENGINE_DIR/scripts/o3de.sh" enable-gem --gem-name DualSense --project-path "$RUNNER_TEMP/CIHost"
 
       - name: Configure
-        run: cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config"
+        # Retried because 3rdParty package downloads (cloudfront) intermittently
+        # fail with SSL connect errors; already-downloaded packages are reused,
+        # so a retry converges instead of starting over.
+        run: |
+          attempt=0
+          until cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config"; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 3 ]; then
+              echo "Configure failed after $attempt attempts"
+              exit 1
+            fi
+            echo "Configure failed (attempt $attempt); retrying in 20s (transient package-CDN errors)"
+            sleep 20
+          done
 
       - name: Build gem (runtime + editor modules)
         run: cmake --build "$RUNNER_TEMP/CIHost/build" --config profile --target DualSense DualSense.Editor
@@ -180,6 +193,15 @@ jobs:
 
       - name: Get engine python
         run: .\o3de\python\get_python.bat
+
+      - name: Register engine and gem
+        # O3DE_EXTERNAL_SUBDIRS makes the gem's targets part of the build, but
+        # o3de_add_variant_dependencies_for_gem_dependencies resolves gem paths
+        # through the ~/.o3de manifest (@GEMROOT@), so the gem must also be
+        # registered — same dual setup as local development.
+        run: |
+          .\o3de\scripts\o3de.bat register --this-engine
+          .\o3de\scripts\o3de.bat register --gem-path .\gem
 
       - name: Configure
         shell: pwsh
