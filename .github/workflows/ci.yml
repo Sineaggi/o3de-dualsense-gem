@@ -99,7 +99,7 @@ jobs:
           curl -fL -o o3de_latest.deb https://o3debinaries.org/development/Latest/Linux/o3de_latest.deb
           echo "$(cut -d' ' -f1 o3de_latest.deb.sha256)  o3de_latest.deb" | sha256sum -c -
           sudo apt-get update
-          sudo apt-get install -y ./o3de_latest.deb ninja-build
+          sudo apt-get install -y ./o3de_latest.deb ninja-build libudev-dev
           rm o3de_latest.deb
 
       - name: Register engine

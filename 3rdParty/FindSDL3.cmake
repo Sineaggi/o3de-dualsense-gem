@@ -198,6 +198,12 @@ block()
     set(SDL_TESTS OFF)
     set(SDL_EXAMPLES OFF)
     set(SDL_INSTALL OFF)
+    # Only consulted on Linux/Unix: with SDL_VIDEO=OFF nothing ever probes for X11/Wayland, but SDL's
+    # CMakeLists still runs a standalone "could not find X11 or Wayland development libraries" FATAL as a
+    # guard against *accidental* console builds (macros.cmake CheckRequiredUnixLibraries; not gated on
+    # SDL_VIDEO -- first hit on the Linux SDK CI job). This build is a deliberate console build: the gem
+    # only wants the joystick subsystem, so opt out of the check the way SDL's README-cmake documents.
+    set(SDL_UNIX_CONSOLE_BUILD ON)
 
     # the below line is what actually runs its CMakeList.txt file, recurses into its subfolder, defines targets and
     # so on:
