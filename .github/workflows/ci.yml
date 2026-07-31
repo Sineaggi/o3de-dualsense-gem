@@ -129,16 +129,18 @@ jobs:
         # libAzCore.so at link time. Verified by extracting the nightly deb and
         # grepping both manglings in its libAzCore.so exports.
         #
-        # CC/CXX pin clang-17, whose *default* mangling matches the SDK
-        # (verified with llvm@17 locally) — the abi-compat flag alone did not
-        # survive O3DE's flag plumbing into the gem's compile lines in round 6,
-        # and under clang-17 it is a no-op kept as a second line of defense.
-        env:
-          CC: clang-17
-          CXX: clang++-17
+        # clang-17's *default* mangling matches the SDK (verified with llvm@17
+        # locally). Passed as explicit cache variables because both indirect
+        # mechanisms failed on real runs: -DCMAKE_CXX_FLAGS didn't survive into
+        # the gem's compile lines (round 6), and env CC/CXX was visibly set yet
+        # CMake still identified Clang 18.1.3 (round 7) — the engine/template
+        # bootstrap swallows both. Explicit CMAKE_<LANG>_COMPILER precedes every
+        # other selection mechanism, including the SDK's own compiler search.
         run: |
           attempt=0
           until cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config" \
+              -DCMAKE_C_COMPILER=/usr/bin/clang-17 \
+              -DCMAKE_CXX_COMPILER=/usr/bin/clang++-17 \
               -DCMAKE_CXX_FLAGS="-fclang-abi-compat=17"; do
             attempt=$((attempt + 1))
             if [ "$attempt" -ge 3 ]; then
@@ -148,6 +150,8 @@ jobs:
             echo "Configure failed (attempt $attempt); retrying in 20s (transient package-CDN errors)"
             sleep 20
           done
+          echo "--- compiler actually configured:"
+          grep -E "CMAKE_(C|CXX)_COMPILER:" "$RUNNER_TEMP/CIHost/build/CMakeCache.txt"
 
       - name: Build gem (runtime + editor modules)
         run: cmake --build "$RUNNER_TEMP/CIHost/build" --config profile --target DualSense DualSense.Editor
