@@ -1,5 +1,7 @@
 # DualSense Gem for O3DE
 
+[![CI](https://github.com/Sineaggi/o3de-dualsense-gem/actions/workflows/ci.yml/badge.svg)](https://github.com/Sineaggi/o3de-dualsense-gem/actions/workflows/ci.yml)
+
 Sony DualSense (PS5) controller support for O3DE. Implemented on macOS (11.3+):
 standard gamepad input, rumble haptic feedback, light bar color control, and
 adaptive trigger force-feedback effects. Planned: HD haptics, player LEDs, and

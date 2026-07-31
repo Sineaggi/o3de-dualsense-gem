@@ -1,0 +1,191 @@
+#
+# CI for the DualSense gem. An O3DE gem cannot build standalone, so each build
+# job first obtains an engine, by the two routes users actually take:
+#
+#   linux-sdk      — installed-engine route. Nightly development-branch .deb from
+#                    o3debinaries.org (engine 2.7.0, matching gem.json's
+#                    compatible_engines), gem built through a throwaway
+#                    MinimalProject host. Also exercises FindSDL3.cmake's stock
+#                    FetchContent fallback, which only runs on installed engines.
+#   windows-source — source-engine route. o3de/o3de checked out at the pinned
+#                    O3DE_REF below and the gem grafted on via
+#                    O3DE_EXTERNAL_SUBDIRS, mirroring the README's local recipe.
+#                    MSVC /W4 /WX; target-scoped to the runtime module, whose
+#                    dependency closure stops at AzCore/AzFramework (building
+#                    DualSense.Editor here would drag in AzToolsFramework + Qt).
+#
+# There is no macOS job: no prebuilt engine exists for Mac, and macOS is the one
+# platform with routine local build/test coverage. DualSense.Tests only exists
+# where PAL_TRAIT_DUALSENSE_TEST_SUPPORTED is TRUE (Mac only today), so both CI
+# jobs are compile/link checks.
+#
+# Third-party actions are pinned by commit SHA (o3de repo convention).
+#
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", ".superpowers/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**", ".superpowers/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned o3de development-branch commit for the Windows source build; bump
+  # deliberately. Must stay >= the version bound in gem.json compatible_engines.
+  O3DE_REF: 4667f3fc3e4f819cb5ad6a0dce4d1221a6545e5d
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout gem
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          show-progress: false
+
+      - name: Validate gem.json and license files
+        run: |
+          test -f LICENSE_APACHE2.TXT
+          test -f LICENSE_MIT.TXT
+          python3 - <<'EOF'
+          import json
+          g = json.load(open("gem.json"))
+          assert g["gem_name"] == "DualSense", g["gem_name"]
+          for field in ("version", "license", "origin_url", "documentation_url", "repo_uri"):
+              assert g.get(field), f"gem.json field {field!r} is empty"
+          assert g["compatible_engines"], "compatible_engines is empty"
+          print("gem.json OK:", g["gem_name"], g["version"])
+          EOF
+
+  linux-sdk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout gem
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          show-progress: false
+
+      - name: Fetch nightly engine checksum
+        # Fetched before the cache step so the 3rdParty cache key tracks the
+        # nightly the run actually uses.
+        run: curl -fL -o o3de_latest.deb.sha256 https://o3debinaries.org/development/Latest/Linux/o3de_latest.deb.sha256
+
+      - name: Cache 3rdParty packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.o3de/3rdParty
+          key: linux-sdk-3p-${{ hashFiles('o3de_latest.deb.sha256') }}
+          restore-keys: |
+            linux-sdk-3p-
+
+      - name: Download and install nightly engine (development branch)
+        run: |
+          curl -fL -o o3de_latest.deb https://o3debinaries.org/development/Latest/Linux/o3de_latest.deb
+          echo "$(cut -d' ' -f1 o3de_latest.deb.sha256)  o3de_latest.deb" | sha256sum -c -
+          sudo apt-get update
+          sudo apt-get install -y ./o3de_latest.deb ninja-build
+          rm o3de_latest.deb
+
+      - name: Register engine
+        run: |
+          ENGINE_DIR=$(ls -d /opt/O3DE/*/ | head -1)
+          ENGINE_DIR=${ENGINE_DIR%/}
+          echo "ENGINE_DIR=$ENGINE_DIR" >> "$GITHUB_ENV"
+          "$ENGINE_DIR/python/get_python.sh"
+          "$ENGINE_DIR/scripts/o3de.sh" register --this-engine --force
+
+      - name: Create host project and enable gem
+        run: |
+          "$ENGINE_DIR/scripts/o3de.sh" create-project --project-path "$RUNNER_TEMP/CIHost" --template-name MinimalProject
+          "$ENGINE_DIR/scripts/o3de.sh" register --gem-path "$GITHUB_WORKSPACE"
+          "$ENGINE_DIR/scripts/o3de.sh" enable-gem --gem-name DualSense --project-path "$RUNNER_TEMP/CIHost"
+
+      - name: Configure
+        run: cmake -S "$RUNNER_TEMP/CIHost" -B "$RUNNER_TEMP/CIHost/build" -G "Ninja Multi-Config"
+
+      - name: Build gem (runtime + editor modules)
+        run: cmake --build "$RUNNER_TEMP/CIHost/build" --config profile --target DualSense DualSense.Editor
+
+  windows-source:
+    runs-on: windows-2022
+    timeout-minutes: 300
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - name: Checkout gem
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: gem
+          show-progress: false
+
+      - name: Checkout o3de at pinned ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: o3de/o3de
+          ref: ${{ env.O3DE_REF }}
+          path: o3de
+          show-progress: false
+
+      - name: Cache 3rdParty packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: 3rdParty/downloaded_packages
+          key: windows-src-3p-${{ env.O3DE_REF }}
+          restore-keys: |
+            windows-src-3p-
+
+      - name: Cache ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ccache
+          key: windows-src-ccache-${{ env.O3DE_REF }}-${{ github.sha }}
+          restore-keys: |
+            windows-src-ccache-${{ env.O3DE_REF }}-
+            windows-src-ccache-
+
+      - name: Setup ccache
+        uses: chocobo1/setup-ccache-action@37c3347f8a7738e82aab7a06f276f7a12e3008fb # v1.5.3
+        with:
+          windows_compile_environment: msvc
+          prepend_symlinks_to_path: false
+          store_cache: false
+          restore_cache: false
+          ccache_options: |
+            cache_dir=${{ github.workspace }}\.ccache
+            hash_dir=false
+            inode_cache=true
+            max_size=5G
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@7defe9254715b088f12dddd9942945a3d75cdad5 # v1.9.0
+        with:
+          arch: x64
+
+      - name: Get engine python
+        run: .\o3de\python\get_python.bat
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $ws = '${{ github.workspace }}'.Replace('\', '/')
+          cmake -S o3de -B build -G "Ninja Multi-Config" `
+            -DLY_DISABLE_TEST_MODULES=FALSE `
+            -DLY_PARALLEL_LINK_JOBS=2 `
+            "-DLY_3RDPARTY_PATH=$ws/3rdParty" `
+            "-DO3DE_EXTERNAL_SUBDIRS=$ws/gem"
+
+      - name: Build gem runtime module
+        run: cmake --build build --config profile --target DualSense
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
