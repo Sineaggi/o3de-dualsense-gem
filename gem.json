@@ -5,7 +5,7 @@
     "license": "Apache-2.0 Or MIT",
     "license_url": "https://opensource.org/licenses/Apache-2.0",
     "origin": "Clayton Walker",
-    "origin_url": "",
+    "origin_url": "https://github.com/Sineaggi/o3de-dualsense-gem",
     "type": "Code",
     "summary": "Sony DualSense (PS5) controller support: adaptive trigger force-feedback effects, haptic feedback, light bar, player LEDs, and extended inputs.",
     "canonical_tags": [
@@ -22,12 +22,13 @@
         "Linux"
     ],
     "icon_path": "preview.png",
-    "requirements": "",
-    "documentation_url": "",
+    "requirements": "A Sony DualSense controller. macOS 11.3+ is fully hardware-validated. Windows (SDL backend) builds clean and detects a real controller over USB; the full effects smoke pass is pending. Linux builds but is untested.",
+    "documentation_url": "https://github.com/Sineaggi/o3de-dualsense-gem#readme",
     "dependencies": [
     ],
-    "repo_uri": "",
+    "repo_uri": "https://raw.githubusercontent.com/Sineaggi/o3de-dualsense-gem/main",
     "compatible_engines": [
+        "o3de>=2.7.0"
     ],
     "engine_api_dependencies":[
     ]
