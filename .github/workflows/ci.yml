@@ -2,17 +2,26 @@
 # CI for the DualSense gem. An O3DE gem cannot build standalone, so each build
 # job first obtains an engine, by the two routes users actually take:
 #
-#   linux-sdk      — installed-engine route. Nightly development-branch .deb from
-#                    o3debinaries.org (engine 2.7.0, matching gem.json's
-#                    compatible_engines), gem built through a throwaway
-#                    MinimalProject host. Also exercises FindSDL3.cmake's stock
-#                    FetchContent fallback, which only runs on installed engines.
+#   linux-sdk      — installed-engine route. Development-branch .deb from
+#                    o3debinaries.org's dated snapshot directory (engine 2.7.0,
+#                    matching gem.json's compatible_engines), gem built through a
+#                    throwaway MinimalProject host. Also exercises
+#                    FindSDL3.cmake's stock FetchContent fallback, which only
+#                    runs on installed engines.
+#   windows-sdk    — installed-engine route on Windows: silent-install of the
+#                    dated snapshot's o3de_2.7.0.msi (the bare MSI is not
+#                    advertised anywhere — its URL comes from the payload
+#                    manifest inside the "Latest" Burn bootstrapper), same
+#                    MinimalProject host flow as linux-sdk. Covers the stock
+#                    FetchContent fallback under MSVC.
 #   windows-source — source-engine route. o3de/o3de checked out at the pinned
 #                    O3DE_REF below and the gem grafted on via
 #                    O3DE_EXTERNAL_SUBDIRS, mirroring the README's local recipe.
 #                    MSVC /W4 /WX; target-scoped to the runtime module, whose
 #                    dependency closure stops at AzCore/AzFramework (building
 #                    DualSense.Editor here would drag in AzToolsFramework + Qt).
+#                    Kept alongside the SDK jobs because dev HEAD moves: this is
+#                    the job that catches upstream engine-API drift early.
 #
 # There is no macOS job: no prebuilt engine exists for Mac, and macOS is the one
 # platform with routine local build/test coverage. DualSense.Tests only exists
@@ -39,6 +48,13 @@ env:
   # Pinned o3de development-branch commit for the Windows source build; bump
   # deliberately. Must stay >= the version bound in gem.json compatible_engines.
   O3DE_REF: 4667f3fc3e4f819cb5ad6a0dce4d1221a6545e5d
+  # Dated o3debinaries.org snapshot both SDK jobs install (engine 2.7.0).
+  # "development/Latest" is a moving pointer (and was two months stale when
+  # checked); the dated directory is pinned and reproducible. Discovered from
+  # the DownloadUrl entries in the Latest Burn bootstrapper's manifest. Bump
+  # together with O3DE_REF when moving to a newer engine snapshot.
+  O3DE_SDK_BUILD: 2026-05-30-6a0c36d86
+  O3DE_SDK_VERSION: 2.7.0
 
 jobs:
   validate:
@@ -81,26 +97,23 @@ jobs:
         with:
           show-progress: false
 
-      - name: Fetch nightly engine checksum
-        # Fetched before the cache step so the 3rdParty cache key tracks the
-        # nightly the run actually uses.
-        run: curl -fL -o o3de_latest.deb.sha256 https://o3debinaries.org/development/Latest/Linux/o3de_latest.deb.sha256
-
       - name: Cache 3rdParty packages
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.o3de/3rdParty
-          key: linux-sdk-3p-${{ hashFiles('o3de_latest.deb.sha256') }}
+          key: linux-sdk-3p-${{ env.O3DE_SDK_BUILD }}
           restore-keys: |
             linux-sdk-3p-
 
-      - name: Download and install nightly engine (development branch)
+      - name: Download and install engine (pinned development snapshot)
         run: |
-          curl -fL -o o3de_latest.deb https://o3debinaries.org/development/Latest/Linux/o3de_latest.deb
-          echo "$(cut -d' ' -f1 o3de_latest.deb.sha256)  o3de_latest.deb" | sha256sum -c -
+          base="https://o3debinaries.org/development/${O3DE_SDK_BUILD}/Linux"
+          curl -fL -o o3de.deb.sha256 "$base/o3de_${O3DE_SDK_VERSION}.deb.sha256"
+          curl -fL -o o3de.deb "$base/o3de_${O3DE_SDK_VERSION}.deb"
+          echo "$(cut -d' ' -f1 o3de.deb.sha256)  o3de.deb" | sha256sum -c -
           sudo apt-get update
-          sudo apt-get install -y ./o3de_latest.deb ninja-build libudev-dev clang-17
-          rm o3de_latest.deb
+          sudo apt-get install -y ./o3de.deb ninja-build libudev-dev clang-17
+          rm o3de.deb
 
       - name: Register engine
         run: |
@@ -155,6 +168,86 @@ jobs:
 
       - name: Build gem (runtime + editor modules)
         run: cmake --build "$RUNNER_TEMP/CIHost/build" --config profile --target DualSense DualSense.Editor
+
+  windows-sdk:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Checkout gem
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          show-progress: false
+
+      - name: Cache 3rdParty packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.o3de/3rdParty
+          key: windows-sdk-3p-${{ env.O3DE_SDK_BUILD }}
+          restore-keys: |
+            windows-sdk-3p-
+
+      - name: Download and install engine (pinned development snapshot)
+        # The bare MSI + cabs are not linked from any download page; the URLs
+        # come from the Burn bootstrapper's payload manifest. 28 cabs is fixed
+        # for this pinned snapshot. INSTALL_ROOT must be a space-free path
+        # (LYPython.cmake breaks under "C:\Program Files"), and a /qn install
+        # does not self-register — the register step below handles that.
+        run: |
+          $base = "https://www.o3debinaries.org/development/${{ env.O3DE_SDK_BUILD }}/Windows"
+          $dl = "$env:RUNNER_TEMP\o3de-msi"
+          New-Item -ItemType Directory -Force $dl | Out-Null
+          curl.exe -fsSL -o "$dl\o3de.msi" "$base/o3de_${{ env.O3DE_SDK_VERSION }}.msi"
+          foreach ($i in 1..28) {
+            curl.exe -fsSL -o "$dl\cab$i.cab" "$base/cab$i.cab"
+          }
+          $p = Start-Process msiexec.exe -ArgumentList "/i","$dl\o3de.msi","INSTALL_ROOT=C:\O3DE","/qn","/norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "msiexec failed with exit code $($p.ExitCode)" }
+          Remove-Item -Recurse -Force $dl
+
+      - name: Locate and register engine
+        run: |
+          $engineJson = Get-ChildItem -Path C:\O3DE -Filter engine.json -Recurse -Depth 3 | Select-Object -First 1
+          if (-not $engineJson) { throw "engine.json not found under C:\O3DE after install" }
+          $engineDir = $engineJson.DirectoryName
+          Write-Host "Engine at $engineDir"
+          "O3DE_ENGINE_DIR=$engineDir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          & "$engineDir\python\get_python.bat"
+          if ($LASTEXITCODE -ne 0) { throw "get_python failed" }
+          & "$engineDir\scripts\o3de.bat" register --this-engine
+          if ($LASTEXITCODE -ne 0) { throw "engine register failed" }
+
+      - name: Create host project and enable gem
+        run: |
+          & "$env:O3DE_ENGINE_DIR\scripts\o3de.bat" create-project --project-path "$env:RUNNER_TEMP\CIHost" --template-name MinimalProject
+          if ($LASTEXITCODE -ne 0) { throw "create-project failed" }
+          & "$env:O3DE_ENGINE_DIR\scripts\o3de.bat" register --gem-path "$env:GITHUB_WORKSPACE"
+          if ($LASTEXITCODE -ne 0) { throw "gem register failed" }
+          & "$env:O3DE_ENGINE_DIR\scripts\o3de.bat" enable-gem --gem-name DualSense --project-path "$env:RUNNER_TEMP\CIHost"
+          if ($LASTEXITCODE -ne 0) { throw "enable-gem failed" }
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@7defe9254715b088f12dddd9942945a3d75cdad5 # v1.9.0
+        with:
+          arch: x64
+
+      - name: Configure
+        # Same transient-CDN retry rationale as linux-sdk.
+        run: |
+          $attempt = 0
+          while ($true) {
+            cmake -S "$env:RUNNER_TEMP\CIHost" -B "$env:RUNNER_TEMP\CIHost\build" -G "Ninja Multi-Config"
+            if ($LASTEXITCODE -eq 0) { break }
+            $attempt++
+            if ($attempt -ge 3) {
+              Write-Host "Configure failed after $attempt attempts"
+              exit 1
+            }
+            Write-Host "Configure failed (attempt $attempt); retrying in 20s (transient package-CDN errors)"
+            Start-Sleep 20
+          }
+
+      - name: Build gem (runtime + editor modules)
+        run: cmake --build "$env:RUNNER_TEMP\CIHost\build" --config profile --target DualSense DualSense.Editor
 
   windows-source:
     runs-on: windows-2022
